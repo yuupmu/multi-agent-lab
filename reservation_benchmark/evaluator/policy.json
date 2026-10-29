@@ -1,0 +1,16 @@
+{
+  "version": "1.0",
+  "timezone_offset_hours": 9,
+  "closed_weekdays": [4, 5, 6],
+  "weekday_numbering": "Monday=0, Sunday=6",
+  "holidays": ["2026-11-10", "2026-12-24"],
+  "cutoff_hours": 24,
+  "cutoff_inclusive": true,
+  "closed_cutoff_rule": "previous_open_day_at_time",
+  "previous_open_day_cutoff_time": "18:00:00",
+  "grace_minutes": 10,
+  "grace_inclusive": true,
+  "started_overrides_grace": true,
+  "invalid_chronology_is_rejected": true,
+  "requests_allowed_on_closed_days": true
+}

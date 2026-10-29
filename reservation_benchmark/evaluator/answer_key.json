@@ -1,0 +1,406 @@
+{
+  "benchmark_version": "1.0",
+  "policy_sha256": "340f1f1a3deb12c8e4480a4225af65de5fd5fc2ba1898cbea3aab1b77a2fe224",
+  "answers": {
+    "C001": {
+      "allowed": true,
+      "purpose": "24시간보다 충분히 이전"
+    },
+    "C002": {
+      "allowed": false,
+      "purpose": "마감 초과, 예약 직후 유예 없음"
+    },
+    "C003": {
+      "allowed": true,
+      "purpose": "24시간보다 충분히 이전"
+    },
+    "C004": {
+      "allowed": false,
+      "purpose": "마감 초과, 예약 직후 유예 없음"
+    },
+    "C005": {
+      "allowed": true,
+      "purpose": "24시간보다 충분히 이전"
+    },
+    "C006": {
+      "allowed": false,
+      "purpose": "마감 초과, 예약 직후 유예 없음"
+    },
+    "C007": {
+      "allowed": true,
+      "purpose": "24시간보다 충분히 이전"
+    },
+    "C008": {
+      "allowed": false,
+      "purpose": "마감 초과, 예약 직후 유예 없음"
+    },
+    "C009": {
+      "allowed": true,
+      "purpose": "24시간보다 충분히 이전"
+    },
+    "C010": {
+      "allowed": false,
+      "purpose": "마감 초과, 예약 직후 유예 없음"
+    },
+    "C011": {
+      "allowed": true,
+      "purpose": "정확한 마감 시각 포함"
+    },
+    "C012": {
+      "allowed": false,
+      "purpose": "마감 1초 초과"
+    },
+    "C013": {
+      "allowed": true,
+      "purpose": "정확한 마감 시각 포함"
+    },
+    "C014": {
+      "allowed": false,
+      "purpose": "마감 1초 초과"
+    },
+    "C015": {
+      "allowed": true,
+      "purpose": "정확한 마감 시각 포함"
+    },
+    "C016": {
+      "allowed": false,
+      "purpose": "마감 1초 초과"
+    },
+    "C017": {
+      "allowed": true,
+      "purpose": "정확한 마감 시각 포함"
+    },
+    "C018": {
+      "allowed": false,
+      "purpose": "마감 1초 초과"
+    },
+    "C019": {
+      "allowed": true,
+      "purpose": "정확한 마감 시각 포함"
+    },
+    "C020": {
+      "allowed": false,
+      "purpose": "마감 1초 초과"
+    },
+    "C021": {
+      "allowed": true,
+      "purpose": "휴무 조정 후 마감 이전 또는 정확히 일치"
+    },
+    "C022": {
+      "allowed": false,
+      "purpose": "마감 초과, 예약 직후 유예 없음"
+    },
+    "C023": {
+      "allowed": true,
+      "purpose": "휴무 조정 후 마감 이전 또는 정확히 일치"
+    },
+    "C024": {
+      "allowed": false,
+      "purpose": "마감 초과, 예약 직후 유예 없음"
+    },
+    "C025": {
+      "allowed": true,
+      "purpose": "휴무 조정 후 마감 이전 또는 정확히 일치"
+    },
+    "C026": {
+      "allowed": false,
+      "purpose": "마감 초과, 예약 직후 유예 없음"
+    },
+    "C027": {
+      "allowed": true,
+      "purpose": "휴무 조정 후 마감 이전 또는 정확히 일치"
+    },
+    "C028": {
+      "allowed": false,
+      "purpose": "마감 초과, 예약 직후 유예 없음"
+    },
+    "C029": {
+      "allowed": true,
+      "purpose": "휴무 조정 후 마감 이전 또는 정확히 일치"
+    },
+    "C030": {
+      "allowed": false,
+      "purpose": "마감 초과, 예약 직후 유예 없음"
+    },
+    "C031": {
+      "allowed": true,
+      "purpose": "휴무 조정 후 마감 이전 또는 정확히 일치"
+    },
+    "C032": {
+      "allowed": false,
+      "purpose": "마감 초과, 예약 직후 유예 없음"
+    },
+    "C033": {
+      "allowed": true,
+      "purpose": "휴무 조정 후 마감 이전 또는 정확히 일치"
+    },
+    "C034": {
+      "allowed": false,
+      "purpose": "마감 초과, 예약 직후 유예 없음"
+    },
+    "C035": {
+      "allowed": true,
+      "purpose": "휴무 조정 후 마감 이전 또는 정확히 일치"
+    },
+    "C036": {
+      "allowed": false,
+      "purpose": "마감 초과, 예약 직후 유예 없음"
+    },
+    "C037": {
+      "allowed": true,
+      "purpose": "휴무 조정 후 마감 이전 또는 정확히 일치"
+    },
+    "C038": {
+      "allowed": false,
+      "purpose": "마감 초과, 예약 직후 유예 없음"
+    },
+    "C039": {
+      "allowed": true,
+      "purpose": "휴무 조정 후 마감 이전 또는 정확히 일치"
+    },
+    "C040": {
+      "allowed": false,
+      "purpose": "마감 초과, 예약 직후 유예 없음"
+    },
+    "C041": {
+      "allowed": true,
+      "purpose": "휴무 조정 후 마감 이전 또는 정확히 일치"
+    },
+    "C042": {
+      "allowed": false,
+      "purpose": "마감 초과, 예약 직후 유예 없음"
+    },
+    "C043": {
+      "allowed": true,
+      "purpose": "휴무 조정 후 마감 이전 또는 정확히 일치"
+    },
+    "C044": {
+      "allowed": false,
+      "purpose": "마감 초과, 예약 직후 유예 없음"
+    },
+    "C045": {
+      "allowed": true,
+      "purpose": "휴무 조정 후 마감 이전 또는 정확히 일치"
+    },
+    "C046": {
+      "allowed": false,
+      "purpose": "마감 초과, 예약 직후 유예 없음"
+    },
+    "C047": {
+      "allowed": true,
+      "purpose": "휴무 조정 후 마감 이전 또는 정확히 일치"
+    },
+    "C048": {
+      "allowed": false,
+      "purpose": "마감 초과, 예약 직후 유예 없음"
+    },
+    "C049": {
+      "allowed": true,
+      "purpose": "휴무 조정 후 마감 이전 또는 정확히 일치"
+    },
+    "C050": {
+      "allowed": false,
+      "purpose": "마감 초과, 예약 직후 유예 없음"
+    },
+    "C051": {
+      "allowed": true,
+      "purpose": "휴무 조정 후 마감 이전 또는 정확히 일치"
+    },
+    "C052": {
+      "allowed": false,
+      "purpose": "마감 초과, 예약 직후 유예 없음"
+    },
+    "C053": {
+      "allowed": true,
+      "purpose": "휴무 조정 후 마감 이전 또는 정확히 일치"
+    },
+    "C054": {
+      "allowed": false,
+      "purpose": "마감 초과, 예약 직후 유예 없음"
+    },
+    "C055": {
+      "allowed": true,
+      "purpose": "휴무 조정 후 마감 이전 또는 정확히 일치"
+    },
+    "C056": {
+      "allowed": false,
+      "purpose": "마감 초과, 예약 직후 유예 없음"
+    },
+    "C057": {
+      "allowed": true,
+      "purpose": "휴무 조정 후 마감 이전 또는 정확히 일치"
+    },
+    "C058": {
+      "allowed": false,
+      "purpose": "마감 초과, 예약 직후 유예 없음"
+    },
+    "C059": {
+      "allowed": true,
+      "purpose": "휴무 조정 후 마감 이전 또는 정확히 일치"
+    },
+    "C060": {
+      "allowed": false,
+      "purpose": "마감 초과, 예약 직후 유예 없음"
+    },
+    "C061": {
+      "allowed": true,
+      "purpose": "가상 휴일과 금토일을 모두 건너뜀"
+    },
+    "C062": {
+      "allowed": false,
+      "purpose": "연속 휴무로 조정된 마감 이후"
+    },
+    "C063": {
+      "allowed": true,
+      "purpose": "가상 휴일과 금토일을 모두 건너뜀"
+    },
+    "C064": {
+      "allowed": false,
+      "purpose": "연속 휴무로 조정된 마감 이후"
+    },
+    "C065": {
+      "allowed": true,
+      "purpose": "가상 휴일과 금토일을 모두 건너뜀"
+    },
+    "C066": {
+      "allowed": false,
+      "purpose": "연속 휴무로 조정된 마감 이후"
+    },
+    "C067": {
+      "allowed": true,
+      "purpose": "가상 휴일과 금토일을 모두 건너뜀"
+    },
+    "C068": {
+      "allowed": false,
+      "purpose": "연속 휴무로 조정된 마감 이후"
+    },
+    "C069": {
+      "allowed": true,
+      "purpose": "가상 휴일과 금토일을 모두 건너뜀"
+    },
+    "C070": {
+      "allowed": false,
+      "purpose": "연속 휴무로 조정된 마감 이후"
+    },
+    "C071": {
+      "allowed": true,
+      "purpose": "기본 마감 초과지만 정확히 예약 후 10분"
+    },
+    "C072": {
+      "allowed": false,
+      "purpose": "예약 후 10분 1초는 유예 없음"
+    },
+    "C073": {
+      "allowed": true,
+      "purpose": "기본 마감 초과지만 정확히 예약 후 10분"
+    },
+    "C074": {
+      "allowed": false,
+      "purpose": "예약 후 10분 1초는 유예 없음"
+    },
+    "C075": {
+      "allowed": true,
+      "purpose": "기본 마감 초과지만 정확히 예약 후 10분"
+    },
+    "C076": {
+      "allowed": false,
+      "purpose": "예약 후 10분 1초는 유예 없음"
+    },
+    "C077": {
+      "allowed": true,
+      "purpose": "기본 마감 초과지만 정확히 예약 후 10분"
+    },
+    "C078": {
+      "allowed": false,
+      "purpose": "예약 후 10분 1초는 유예 없음"
+    },
+    "C079": {
+      "allowed": true,
+      "purpose": "기본 마감 초과지만 정확히 예약 후 10분"
+    },
+    "C080": {
+      "allowed": false,
+      "purpose": "예약 후 10분 1초는 유예 없음"
+    },
+    "C081": {
+      "allowed": true,
+      "purpose": "시작 직전에는 예약 직후 유예 적용"
+    },
+    "C082": {
+      "allowed": false,
+      "purpose": "정확히 시작 또는 이미 시작했으면 유예보다 우선하여 거부"
+    },
+    "C083": {
+      "allowed": true,
+      "purpose": "시작 직전에는 예약 직후 유예 적용"
+    },
+    "C084": {
+      "allowed": false,
+      "purpose": "정확히 시작 또는 이미 시작했으면 유예보다 우선하여 거부"
+    },
+    "C085": {
+      "allowed": true,
+      "purpose": "시작 직전에는 예약 직후 유예 적용"
+    },
+    "C086": {
+      "allowed": false,
+      "purpose": "정확히 시작 또는 이미 시작했으면 유예보다 우선하여 거부"
+    },
+    "C087": {
+      "allowed": true,
+      "purpose": "시작 직전에는 예약 직후 유예 적용"
+    },
+    "C088": {
+      "allowed": false,
+      "purpose": "정확히 시작 또는 이미 시작했으면 유예보다 우선하여 거부"
+    },
+    "C089": {
+      "allowed": true,
+      "purpose": "시작 직전에는 예약 직후 유예 적용"
+    },
+    "C090": {
+      "allowed": false,
+      "purpose": "정확히 시작 또는 이미 시작했으면 유예보다 우선하여 거부"
+    },
+    "C091": {
+      "allowed": false,
+      "purpose": "예약 생성 시각이 미래: 마감 이전이어도 거부"
+    },
+    "C092": {
+      "allowed": false,
+      "purpose": "예약 생성 시각이 이용 시작 이상"
+    },
+    "C093": {
+      "allowed": false,
+      "purpose": "예약 생성 시각이 미래: 마감 이전이어도 거부"
+    },
+    "C094": {
+      "allowed": false,
+      "purpose": "예약 생성 시각이 이용 시작 이상"
+    },
+    "C095": {
+      "allowed": false,
+      "purpose": "예약 생성 시각이 미래: 마감 이전이어도 거부"
+    },
+    "C096": {
+      "allowed": false,
+      "purpose": "예약 생성 시각이 이용 시작 이상"
+    },
+    "C097": {
+      "allowed": false,
+      "purpose": "예약 생성 시각이 미래: 마감 이전이어도 거부"
+    },
+    "C098": {
+      "allowed": false,
+      "purpose": "예약 생성 시각이 이용 시작 이상"
+    },
+    "C099": {
+      "allowed": false,
+      "purpose": "예약 생성 시각이 미래: 마감 이전이어도 거부"
+    },
+    "C100": {
+      "allowed": false,
+      "purpose": "예약 생성 시각이 이용 시작 이상"
+    }
+  }
+}

@@ -1,0 +1,39 @@
+"""Mock-generated candidate. Policy comes only from recorded human decisions."""
+import json
+from datetime import datetime, timedelta, timezone, time
+
+POLICIES = json.loads(__POLICY_JSON_LITERAL__)
+TZ = timezone(timedelta(hours=POLICIES["calendar"]["timezone_offset_hours"]))
+
+def can_cancel(now, booked_at, starts_at):
+    if set(POLICIES) != {"cutoff", "calendar", "exceptions"}:
+        raise RuntimeError("Human policy decisions are incomplete")
+    try:
+        values = [datetime.fromisoformat(value) for value in (now, booked_at, starts_at)]
+        if any(value.utcoffset() is None for value in values):
+            return False
+        current, booked, starts = [value.astimezone(TZ) for value in values]
+    except (TypeError, ValueError, OverflowError):
+        return False
+    if booked > current or booked >= starts:
+        return False
+    exceptions = POLICIES["exceptions"]
+    if current >= starts and exceptions["started_blocks"]:
+        return False
+    elapsed = current - booked
+    grace = timedelta(minutes=exceptions["minutes"])
+    if (elapsed <= grace if exceptions["inclusive"] else elapsed < grace):
+        return True
+    if current >= starts:
+        return False
+    cutoff = POLICIES["cutoff"]
+    calendar = POLICIES["calendar"]
+    deadline = starts - timedelta(hours=cutoff["hours"])
+    def closed(day):
+        return day.weekday() in calendar["closed_weekdays"] or day.isoformat() in calendar["holidays"]
+    if calendar["adjust"] and closed(deadline.date()):
+        day = deadline.date() - timedelta(days=1)
+        while closed(day):
+            day -= timedelta(days=1)
+        deadline = datetime.combine(day, time.fromisoformat(calendar["time"]), TZ)
+    return current <= deadline if cutoff["inclusive"] else current < deadline
