@@ -15,7 +15,8 @@ class Sink:
     def flush(self):
         pass
 
-cases = json.loads(sys.stdin.read())
+payload = json.loads(sys.stdin.read())
+cases, task = payload['cases'], payload['task_id']
 with contextlib.redirect_stdout(Sink()), contextlib.redirect_stderr(Sink()):
     spec = importlib.util.spec_from_file_location('submission', sys.argv[1])
     module = importlib.util.module_from_spec(spec)
@@ -23,10 +24,17 @@ with contextlib.redirect_stdout(Sink()), contextlib.redirect_stderr(Sink()):
     rows = []
     for case in cases:
         try:
-            result = module.can_cancel(case['now'], case['booked_at'], case['starts_at'])
-            if type(result) is not bool:
-                raise TypeError()
+            if task == 'allocation':
+                result = module.simulate(case['initial_state'], case['events'])
+                if type(result) is not dict:
+                    raise TypeError()
+            else:
+                result = module.can_cancel(case['now'], case['booked_at'], case['starts_at'])
+                if type(result) is not bool:
+                    raise TypeError()
+            if len(json.dumps(result, allow_nan=False)) > 262144:
+                raise ValueError()
             rows.append({'actual': result, 'error': None})
         except Exception:
-            rows.append({'actual': None, 'error': '함수 실행 오류 또는 bool이 아닌 반환값'})
+            rows.append({'actual': None, 'error': '함수 실행 오류 또는 반환 형식·크기 오류'})
 print(json.dumps(rows))

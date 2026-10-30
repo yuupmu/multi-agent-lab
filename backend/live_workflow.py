@@ -6,7 +6,8 @@ import uuid
 
 from .adapters import agent_input
 from .isolated import check_code
-from .live_schemas import PLAN, CODE, MONITOR, MAIN_RULES, MONITOR_RULES
+from .live_schemas import PLAN, schemas_for, main_rules, monitor_rules
+from .tasks import TASKS, task_id
 
 
 class RunStopped(Exception):
@@ -21,7 +22,11 @@ class LiveWorkflow:
 
     def _live_context(self, state):
         context = self._context(state)
-        context.update(task=(self.benchmark / 'agent/TASK.md').read_text(),
+        benchmark = self._benchmark_path(state)
+        public_task = (benchmark / 'agent/TASK.md').read_text()
+        if task_id(state) == 'allocation':
+            public_task += '\n' + (benchmark / 'agent/OUTPUT_FORMAT.md').read_text()
+        context.update(task=public_task,
                        assumptions=state.get('assumptions', []), requests=state['requests'],
                        monitor_feedback=state['monitors'], verification=state['verification'])
         return context
@@ -36,7 +41,7 @@ class LiveWorkflow:
             state['calls'].append(call)
             client = self.api_client
             self._save(state)
-        result, metadata = client.invoke(envelope, MAIN_RULES, schema)
+        result, metadata = client.invoke(envelope, main_rules(task_id(state)), schema)
         with self.cv:
             if not self._live_active(state, epoch):
                 raise RunStopped()
@@ -59,7 +64,8 @@ class LiveWorkflow:
             with self.cv:
                 if not self._live_active(self._state(run_id), epoch):
                     return
-            result, metadata = client.invoke(envelope, MONITOR_RULES, MONITOR)
+                selected_task = task_id(self._state(run_id))
+            result, metadata = client.invoke(envelope, monitor_rules(selected_task), schemas_for(selected_task)[1])
             decision = result.get('decision')
             if decision not in ('continue', 'verify', 'human') or not isinstance(result.get('reason'), str):
                 raise ValueError('감시 응답 형식 오류')
@@ -79,7 +85,7 @@ class LiveWorkflow:
                 if item.get('priority') not in ('normal', 'high'):
                     raise ValueError('우선순위 형식 오류')
             code = envelope['project_state']['code']
-            verification = check_code(code, checks) if checks and code else None
+            verification = check_code(code, checks, selected_task) if checks and code else None
             with self.cv:
                 state = self._state(run_id)
                 if not self._live_active(state, epoch):
@@ -122,6 +128,8 @@ class LiveWorkflow:
         try:
             with self.cv:
                 state = self._state(run_id)
+                selected_task = task_id(state)
+                definition = TASKS[selected_task]
                 needs_plan = not resume or not state['plan']
             if needs_plan:
                 plan, _ = self._live_call(run_id, 'plan', PLAN, epoch)
@@ -153,19 +161,19 @@ class LiveWorkflow:
                     state['autonomous_steps'] = autonomous_steps
                     state.update(status='running', phase='코드 작성·수정')
                     self._save(state)
-                result, envelope = self._live_call(run_id, 'implement', CODE, epoch)
+                result, envelope = self._live_call(run_id, 'implement', schemas_for(selected_task)[0], epoch)
                 code = result.get('code')
                 if not isinstance(code, str) or len(code) > 100000:
                     raise ValueError('생성 코드 크기·형식 오류')
                 tree = ast.parse(code)
-                if not any(isinstance(n, ast.FunctionDef) and n.name == 'can_cancel' and len(n.args.args) == 3 for n in tree.body):
-                    raise ValueError('can_cancel(now, booked_at, starts_at) 함수가 필요합니다.')
+                if not any(isinstance(n, ast.FunctionDef) and n.name == definition['function'] and len(n.args.args) == len(definition['arguments']) for n in tree.body):
+                    raise ValueError('%s(%s) 함수가 필요합니다.' % (definition['function'], ', '.join(definition['arguments'])))
                 if type(result.get('complete')) is not bool:
                     raise ValueError('완료 판단 형식 오류')
                 expected = {d['request_id'] for d in envelope['project_state']['decisions']}
                 if not isinstance(result.get('applied_decision_ids'), list) or set(result['applied_decision_ids']) != expected:
                     raise ValueError('메인 에이전트가 모든 인간 결정의 반영을 보고하지 않았습니다.')
-                verification = check_code(code, result.get('checks'))
+                verification = check_code(code, result.get('checks'), selected_task)
                 with self.cv:
                     if not self._live_active(state, epoch):
                         return
@@ -198,7 +206,7 @@ class LiveWorkflow:
                                 state.update(status='completed', phase='프로젝트 완료')
                                 for task in state['tasks']:
                                     task['status'] = 'completed'
-                                self._event(state, '프로젝트 완료. 테스트하기로 100문항을 채점할 수 있습니다.')
+                                self._event(state, '프로젝트 완료. 테스트하기로 %s문항을 채점할 수 있습니다.' % definition['total'])
                                 self._save(state)
                                 return
                             break

@@ -15,6 +15,7 @@ from .store import Store
 from .openai_client import OpenAIClient
 from .live_workflow import LiveWorkflow
 from .isolated import grade_isolated
+from .tasks import TASKS, task_id
 
 
 def now():
@@ -41,10 +42,15 @@ def validate_config(config):
     mode = config.get('mode', 'mock')
     if mode not in ('mock', 'openai'):
         raise ValueError('실행 모드를 확인하세요.')
-    return {"version": 4, "mode": mode, "architecture": "main-agent-with-three-observers",
+    selected_task = config.get('task_id', 'cancellation')
+    if not isinstance(selected_task, str) or selected_task not in TASKS:
+        raise ValueError('과제를 확인하세요.')
+    if selected_task == 'allocation' and mode == 'mock':
+        raise ValueError('자원 배정 과제는 OpenAI API 모드로 실행하세요. 모의 실행은 기존 예약 취소 과제용입니다.')
+    return {"version": 5, "mode": mode, 'task_id':selected_task, "architecture": "main-agent-with-three-observers",
             "project": {"name": text(config["project"].get("name"), 120)},
-            "mainAgent": {"model": text(main.get("model"), 80), "prompt": text(main.get("prompt"), 20000)},
-            "monitors": [{"id": m["id"], "model": text(m.get("model"), 80),
+            "mainAgent": {"model": text(main.get("model"), 512), "prompt": text(main.get("prompt"), 20000)},
+            "monitors": [{"id": m["id"], "model": text(m.get("model"), 512),
                           "concept": text(m.get("concept"), 80), "instructions": text(m.get("instructions"), 12000)}
                          for m in sorted(monitors, key=lambda m: m["id"])],
             "workflow": {"waitForAllMonitors": False, "pauseAffectedTasksOnly": True,
@@ -124,6 +130,20 @@ class Engine(LiveWorkflow):
             self.api_client = None
             return self.connection()
 
+    def refresh_models(self):
+        with self.cv:
+            self._connection_idle()
+            if not self.api_client:
+                raise Conflict('API 키를 먼저 연결하세요.')
+            self.connecting = True
+            client = self.api_client
+        try:
+            client.connect()
+        finally:
+            with self.cv:
+                self.connecting = False
+        return self.connection()
+
     def _save(self, state):
         state["revision"] += 1
         state["updated_at"] = now()
@@ -172,6 +192,8 @@ class Engine(LiveWorkflow):
                      "plan": [], "policies": {}, "requests": [], "decisions": [], "calls": [], "events": [],
                      "monitors": [{"id": i, "status": "idle", "decision": None, "version": None} for i in (1, 2, 3)],
                      "verification": None, "test": {"status": "not_run", "report": None}}
+            if config['task_id'] == 'allocation':
+                state['tasks'][1]['name'] = '배정 정책 구현'
             self.runs[run_id] = state
             (self.data / run_id).mkdir()
             self._event(state, "OpenAI 실행 시작." if state['mode'] == 'openai' else "모의 실행 시작. 프롬프트는 전달·기록되지만 자연어 해석은 수행하지 않습니다.")
@@ -184,6 +206,9 @@ class Engine(LiveWorkflow):
                 "plan": state["plan"], "tasks": state["tasks"], "policies": state["policies"],
                 "decisions": state["decisions"],
                 "code": state["artifact"]["code"] if state["artifact"] else None}
+
+    def _benchmark_path(self, state):
+        return self.benchmark if task_id(state) == 'cancellation' else self.root / TASKS[task_id(state)]['directory']
 
     def _invoke_main(self, state, action):
         envelope = agent_input("main", state["config"]["mainAgent"], self._context(state), action)
@@ -376,7 +401,7 @@ class Engine(LiveWorkflow):
             if state["test"]["status"] == "running":
                 raise Conflict("채점이 진행 중입니다.")
             state["test"] = {"status": "running", "report": None, "code_version": state["code_version"]}
-            self._event(state, "사용자가 100문항 채점을 시작했습니다.")
+            self._event(state, "사용자가 %s %s문항 채점을 시작했습니다." % (TASKS[task_id(state)]['name'], TASKS[task_id(state)]['total']))
             self._save(state)
             self._spawn(self._grade, run_id, copy.deepcopy(state["artifact"]))
             return copy.deepcopy(state)
@@ -388,8 +413,9 @@ class Engine(LiveWorkflow):
             if hashlib.sha256(path.read_bytes()).hexdigest() != artifact["sha256"]:
                 raise ValueError("제출 파일이 완료 시점 이후 변경됐습니다.")
             report_path = run_dir / "score.json"
-            if self.get(run_id)['mode'] == 'openai':
-                report = grade_isolated(path.read_text(), self.benchmark)
+            saved_run = self.get(run_id)
+            if saved_run['mode'] == 'openai':
+                report = grade_isolated(path.read_text(), self._benchmark_path(saved_run), task_id(saved_run))
                 report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2))
             else:
                 subprocess.run([sys.executable, "-I", "-B", str(self.benchmark / "score.py"), str(path),

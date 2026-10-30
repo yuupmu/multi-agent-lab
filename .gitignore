@@ -12,3 +12,5 @@ solution_v*.py
 reservation_benchmark/reports/
 archive/
 *.zip
+
+resource_allocation_benchmark/reports/

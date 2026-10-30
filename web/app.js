@@ -6,19 +6,71 @@ $('toggle-rules').addEventListener('click', () => {
   const panel = $('grading-rules');
   panel.hidden = !panel.hidden;
   $('toggle-rules').setAttribute('aria-expanded', String(!panel.hidden));
+  updateTaskUI();
 });
 const configForm = $("configuration");
 const storageKey = "research-project-monitor-configuration-v2";
 const monitorIds = [1, 2, 3];
+const modelFields = ['main-model', ...monitorIds.map(id => 'model-' + id)];
+const modelNames = {'gpt-6.1-sol':'Sol', 'gpt-6-astra':'Astra', 'gpt-6.1-terra':'Terra', 'gpt-6-luna':'Luna', 'gpt-4o':'GPT-4o', 'gpt-4o-mini':'GPT-4o mini'};
+const defaultModels = Object.keys(modelNames);
+let availableModels = [];
+let modelsConnected = false;
+function modelOption(value, unavailable = false) {
+  const option = document.createElement('option');
+  option.value = value;
+  option.textContent = (modelNames[value] ? modelNames[value] + ' · ' : '') + value + (unavailable ? ' · 현재 목록에 없음' : '');
+  return option;
+}
+function fillModelOptions() {
+  const choices = modelsConnected ? availableModels : defaultModels;
+  for (const id of modelFields) {
+    const input = $(id), selected = input.value;
+    input.replaceChildren();
+    if (selected && !choices.includes(selected)) input.append(modelOption(selected, modelsConnected));
+    for (const model of choices) input.append(modelOption(model));
+    if (selected) input.value = selected;
+  }
+}
 const commonMonitorPrompt = "전달받은 프로젝트 상태를 담당 관점으로 검토하고, ‘계속 진행 / 추가 검증 / 인간 판단 필요’ 중 하나를 제안한다. 인간 판단이 필요하면 근거·질문·영향받는 작업을 제시한다.";
-const fields = ["run-mode", "project-name", "main-model", "main-prompt",
+const fields = ["task-id", "run-mode", "project-name", "main-model", "main-prompt",
   ...monitorIds.flatMap(id => [`concept-${id}`, `model-${id}`, `instructions-${id}`])];
 const limits = { "project-name": 120, "main-prompt": 20000 };
+const taskInfo = {
+  cancellation: {name:'예약 취소', total:100, project:'예약 취소 판정 프로그램'},
+  allocation: {name:'예약·대기열·자원 배정', total:150, project:'예약·대기열·자원 배정 프로그램'}
+};
+const defaultPrompts = {cancellation: $('main-prompt').value};
+defaultPrompts.allocation = defaultPrompts.cancellation.replace('예약 취소 여부를 판정하는 Python 프로그램을 구현한다.', '예약·대기열·자원 배정을 처리하는 Python 프로그램을 구현한다.');
+let allocationRulesLoaded = false;
+function updateTaskUI() {
+  const allocation = $('task-id').value === 'allocation';
+  $('cancellation-rules').hidden = allocation;
+  $('allocation-rules').hidden = !allocation;
+  const mock = Array.from($('run-mode').options).find(o => o.value === 'mock');
+  if (mock) mock.disabled = allocation;
+  if (allocation && $('run-mode').value === 'mock') $('run-mode').value = 'openai';
+  if (allocation && !$('grading-rules').hidden && !allocationRulesLoaded && location.protocol !== 'file:') {
+    allocationRulesLoaded = true;
+    $('allocation-rules').textContent = '불러오는 중';
+    api('/api/tasks/allocation/rules').then(result => {$('allocation-rules').textContent = result.text;})
+      .catch(() => {allocationRulesLoaded = false; $('allocation-rules').textContent = '규칙을 불러오지 못했습니다.';});
+  }
+}
+$('task-id').addEventListener('change', () => {
+  const id = $('task-id').value;
+  if (Object.values(defaultPrompts).includes($('main-prompt').value)) $('main-prompt').value = defaultPrompts[id];
+  else $('config-status').textContent = '선택한 과제에 맞게 메인 프롬프트를 확인하세요.';
+  if (Object.values(taskInfo).some(t => t.project === $('project-name').value)) $('project-name').value = taskInfo[id].project;
+  updateTaskUI(); controls();
+});
+
 for (const id of monitorIds) { limits[`concept-${id}`] = 80; limits[`instructions-${id}`] = 12000; }
 
 function readConfiguration() {
   return {
-    version: 4,
+    version: 5,
+    task_id: $('task-id').value,
     mode: $('run-mode').value,
     architecture: "main-agent-with-three-observers",
     project: { name: $("project-name").value.trim() },
@@ -37,14 +89,17 @@ function validInputs() {
   for (const id of fields) {
     const input = $(id);
     input.setCustomValidity(input.value.trim() ? "" : "공백이 아닌 내용을 입력하세요.");
+    if (modelFields.includes(id) && $('run-mode').value === 'openai' && modelsConnected && !availableModels.includes(input.value)) {
+      input.setCustomValidity('연결된 API 키의 모델 목록에서 선택하세요.');
+    }
   }
   return configForm.reportValidity();
 }
 function restoreConfiguration(config, migrateSaved = false) {
-  if (!config || ![2, 3, 4].includes(config.version) || config.architecture !== "main-agent-with-three-observers" ||
+  if (!config || ![2, 3, 4, 5].includes(config.version) || config.architecture !== "main-agent-with-three-observers" ||
       !Array.isArray(config.monitors) || config.monitors.length !== 3) throw new Error("Unsupported configuration");
-  const aliases = {'GPT-6.1 Sol':'gpt-6.1-sol', 'GPT-6 Astra':'gpt-6-astra', 'GPT-6 Luna':'gpt-6-luna'};
-  const values = { 'run-mode': config.mode || 'openai', "project-name": config.project?.name, "main-model": aliases[config.mainAgent?.model] || config.mainAgent?.model, "main-prompt": config.mainAgent?.prompt };
+  const aliases = {'GPT-6.1 Sol':'gpt-6.1-sol', 'GPT-6 Astra':'gpt-6-astra', 'GPT-6.1 Terra':'gpt-6.1-terra', 'GPT-6 Luna':'gpt-6-luna'};
+  const values = { 'task-id': config.task_id || 'cancellation', 'run-mode': config.mode || 'openai', "project-name": config.project?.name, "main-model": aliases[config.mainAgent?.model] || config.mainAgent?.model, "main-prompt": config.mainAgent?.prompt };
   for (const id of monitorIds) {
     const matches = config.monitors.filter(m => m && m.id === id);
     if (matches.length !== 1) throw new Error("Invalid monitor configuration");
@@ -61,10 +116,16 @@ function restoreConfiguration(config, migrateSaved = false) {
   for (const [id, value] of Object.entries(values)) {
     if (typeof value !== "string" || !value.trim() || (limits[id] && value.length > limits[id])) throw new Error("Invalid saved value");
     const input = $(id);
-    if (input.tagName === "SELECT" && !Array.from(input.options).some(option => option.value === value)) throw new Error("Unknown model");
+    if (input.tagName === "SELECT" && !modelFields.includes(id) && !Array.from(input.options).some(option => option.value === value)) throw new Error("Unknown selection");
+    if (modelFields.includes(id) && value.length > 512) throw new Error('Invalid model ID');
   }
-  for (const [id, value] of Object.entries(values)) $(id).value = value;
+  for (const [id, value] of Object.entries(values)) {
+    if (modelFields.includes(id) && !Array.from($(id).options).some(o => o.value === value)) $(id).append(modelOption(value));
+    $(id).value = value;
+  }
+  fillModelOptions();
   updateConceptLabels();
+  updateTaskUI();
 }
 
 for (const id of fields) {
@@ -136,6 +197,7 @@ function controls() {
   $('api-key').disabled = !online || busy || running;
   $('connect-api').disabled = !online || busy || running;
   $('disconnect-api').disabled = !online || busy || running || !apiConnected;
+  $('refresh-models').disabled = !online || busy || running || !apiConnected;
   $('stop-run').disabled = !online || busy || !running;
   $('test-project').disabled = !online || busy || !currentRun || currentRun.status !== 'completed' || testing;
   $('download-run').disabled = !currentRun;
@@ -190,6 +252,8 @@ function render(state) {
   if (!state) { controls(); return; }
   if (lastRevision === state.id + ':' + state.revision) { controls(); return; }
   lastRevision = state.id + ':' + state.revision;
+  const runTask = taskInfo[state.config.task_id || 'cancellation'];
+  $('run-task').textContent = runTask.name + ' · ' + runTask.total + (runTask.total === 150 ? '세트' : '문항');
   $('run-phase').textContent = state.phase + (['failed','interrupted','stopped'].includes(state.status) ? ' · ' + statusLabels[state.status] : '');
   $('active-tasks').textContent = state.tasks.filter(t => ['running','pending'].includes(t.status)).map(t => t.name).join(', ') || '없음';
   $('blocked-tasks').textContent = state.tasks.filter(t => t.status === 'blocked').map(t => t.name).join(', ') || '없음';
@@ -198,7 +262,7 @@ function render(state) {
   $('shared-plan').textContent = state.plan.join(' → ');
   $('shared-assumptions').textContent = (state.assumptions || state.requests.filter(r => r.status === 'waiting').map(r => r.key)).join(', ') || '없음';
   $('shared-decisions').textContent = state.decisions.map(d => d.key).join(', ') || '없음';
-  $('shared-tests').textContent = state.test.report ? state.test.report.score + '/100' : statusLabels[state.test.status] || state.test.status;
+  $('shared-tests').textContent = state.test.report ? state.test.report.score + '/' + state.test.report.total : statusLabels[state.test.status] || state.test.status;
   for (const monitor of state.monitors) {
     $('monitor-name-' + monitor.id).textContent = state.config.monitors.find(m => m.id === monitor.id).concept;
     $('monitor-state-' + monitor.id).textContent = monitor.status === 'observing' ? '관찰 중' : decisionLabels[monitor.decision] || (monitor.status === 'idle' ? '관찰 전' : '오류');
@@ -230,11 +294,16 @@ function render(state) {
   $('verification-result').textContent = state.verification ? (state.verification.type === 'syntax_and_public_checks' ?
     '문법 확인 · 자체 검증 ' + state.verification.correct + '/' + state.verification.total : '정책 값·문법 확인') + ' (v' + state.verification.code_version + ')' : '없음';
   $('test-status').textContent = state.test.error || statusLabels[state.test.status] || state.test.status;
-  $('score-value').textContent = state.test.report ? state.test.report.score + ' / ' + state.test.report.total : '— / 100';
+  $('score-value').textContent = state.test.report ? state.test.report.score + ' / ' + state.test.report.total : '— / ' + runTask.total;
+  if (state.test.report && runTask.total === 150) $('score-value').textContent += ' (' + state.test.report.accuracy_percent + '%)';
   $('test-details').hidden = !state.test.report;
   $('category-scores').replaceChildren();
   if (state.test.report) for (const [name, score] of Object.entries(state.test.report.categories)) {
     const p = document.createElement('p'); p.textContent = name + ': ' + score.correct + '/' + score.total; $('category-scores').append(p);
+  }
+  for (const [key, label] of Object.entries({event_results:'사건별 결과',final_state:'최종 상태',notifications:'알림'})) {
+    const score = state.test.report?.components?.[key];
+    if (score) {const p=document.createElement('p'); p.textContent=label+': '+score.correct+'/'+score.total; $('category-scores').append(p);}
   }
   $('event-log').replaceChildren();
   for (const event of state.events.slice(-100)) {
@@ -284,14 +353,14 @@ $('download-run').addEventListener('click', () => { if(currentRun) download(JSON
 $('download-code').addEventListener('click', () => { if(currentRun?.artifact) download(currentRun.artifact.code,currentRun.artifact.filename,'text/x-python'); });
 function showConnection(connection) {
   apiConnected = connection.connected;
-  $('api-status').textContent = apiConnected ? '연결됨 · 서버 종료 시 삭제' : '미연결';
-  const signature = connection.models.join(',');
+  const models = [...new Set(connection.models)].sort();
+  $('api-status').textContent = apiConnected ? '연결됨 · 모델 ' + models.length + '개' : '미연결';
+  const signature = JSON.stringify([apiConnected, models]);
   if (signature !== modelList) {
     modelList = signature;
-    $('api-models').replaceChildren();
-    for (const id of connection.models) {
-      const option = document.createElement('option'); option.value = id; $('api-models').append(option);
-    }
+    availableModels = models;
+    modelsConnected = apiConnected;
+    fillModelOptions();
   }
   controls();
 }
@@ -309,6 +378,7 @@ $('api-form').addEventListener('submit', event => {
   });
 });
 $('disconnect-api').addEventListener('click', () => operation(async () => showConnection(await api('/api/connection/disconnect', {}))));
+$('refresh-models').addEventListener('click', () => operation(async () => showConnection(await api('/api/connection/refresh', {}))));
 async function poll() {
   const version = operationVersion;
   try {

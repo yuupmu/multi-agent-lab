@@ -52,6 +52,13 @@ class FakeProvider:
 
 
 class TransportTests(unittest.TestCase):
+    def test_model_list_includes_legacy_future_and_finetuned_ids(self):
+        client = OpenAIClient(FAKE_KEY)
+        models = ['gpt-6-luna', 'gpt-4o', 'gpt-4o-mini', 'future-model', 'ft:' + 'x' * 100]
+        with patch.object(client, '_request', return_value={'data':
+                [{'id': m} for m in models + models] + [None, {}, {'id': None}]}):
+            self.assertEqual(client.connect(), sorted(models))
+
     def test_responses_payload_preserves_prompt_and_handles_output(self):
         client = OpenAIClient(FAKE_KEY)
         response = {'status':'completed','id':'r1','usage':{},'output':[{'type':'message','content':[{'type':'output_text','text':'{"answer":true}'}]}]}

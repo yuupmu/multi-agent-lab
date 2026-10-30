@@ -18,12 +18,13 @@ function setup(saved) {
       textContent:'', hidden:/\bhidden\b/.test(attrs), listeners:{}, attributes:{},
       addEventListener(event, listener){this.listeners[event]=listener;},
       setAttribute(name,value){this.attributes[name]=value;},
-      setCustomValidity(){}, reportValidity(){return true;}, querySelectorAll(){return [];} });
+      append(option){this.options.push(option);}, replaceChildren(){this.options=[];},
+      setCustomValidity(message){this.validationMessage=message;}, reportValidity(){return true;}, querySelectorAll(){return [];} });
   }
-  const context = {document:{getElementById(id){assert.ok(elements.has(id), 'missing ID: ' + id); return elements.get(id);}},
+  const context = {document:{createElement(tag){return {tagName:tag.toUpperCase(),value:'',textContent:''};},getElementById(id){assert.ok(elements.has(id), 'missing ID: ' + id); return elements.get(id);}},
     localStorage:{getItem(){return saved ? JSON.stringify(saved) : null;}}, location:{protocol:'file:'}};
   vm.createContext(context);
-  vm.runInContext(script + '\nglobalThis.probe = {readConfiguration,restoreConfiguration,commonMonitorPrompt,setRuntime(state, connected) {currentRun=state; online=true; apiConnected=connected; selectedRequest=state.requests[0]?.id; controls();}};', context);
+  vm.runInContext(script + '\nglobalThis.probe = {readConfiguration,restoreConfiguration,commonMonitorPrompt,showConnection,validInputs,setRuntime(state, connected) {currentRun=state; online=true; apiConnected=connected; selectedRequest=state.requests[0]?.id; controls();}};', context);
   return {probe:context.probe, elements};
 }
 
@@ -64,6 +65,23 @@ test('rules toggle is initially closed and excluded from agent configuration', (
   const config = JSON.stringify(probe.readConfiguration());
   for (const hidden of ['2026-11-10', '2026-12-24', '24시간', '금·토·일', 'UTC+9']) assert.ok(!config.includes(hidden));
 });
+
+test('task selection changes defaults, preserves custom prompts and saves the task', () => {
+  const {probe, elements} = setup();
+  assert.equal(probe.readConfiguration().task_id, 'cancellation');
+  const task = elements.get('task-id');
+  task.value = 'allocation'; task.listeners.change();
+  assert.equal(probe.readConfiguration().task_id, 'allocation');
+  assert.ok(elements.get('main-prompt').value.startsWith('예약·대기열·자원 배정'));
+  assert.equal(elements.get('cancellation-rules').hidden, true);
+  assert.equal(elements.get('allocation-rules').hidden, false);
+  const restored = setup(probe.readConfiguration());
+  assert.equal(restored.probe.readConfiguration().task_id, 'allocation');
+  elements.get('main-prompt').value = '  사용자 원문\n보존  ';
+  task.value = 'cancellation'; task.listeners.change();
+  assert.equal(elements.get('main-prompt').value, '  사용자 원문\n보존  ');
+  assert.equal(elements.get('cancellation-rules').hidden, false);
+});
 test('old saved prompts migrate once and edited version 3 prompts stay verbatim', () => {
   const initial = setup().probe.readConfiguration();
   initial.version = 2;
@@ -77,4 +95,41 @@ test('old saved prompts migrate once and edited version 3 prompts stay verbatim'
   assert.equal(JSON.stringify(twice), JSON.stringify(updated));
   updated.monitors[0].instructions = '  새 지침\n원문  ';
   assert.equal(setup(updated).probe.readConfiguration().monitors[0].instructions, '  새 지침\n원문  ');
+});
+
+
+test('all account model IDs are selectable independently, including Luna and GPT-4o', () => {
+  const {probe,elements}=setup();
+  const models=['gpt-6-luna','gpt-4o','gpt-4o-mini','gpt-4o-2024-11-20','future-model','ft:'+ 'x'.repeat(100)];
+  probe.showConnection({connected:true,models});
+  const ids=['main-model','model-1','model-2','model-3'];
+  ids.forEach((id,i)=>{
+    const input=elements.get(id);
+    for(const model of models) assert.ok(input.options.some(o=>o.value===model));
+    input.value=models[i];
+  });
+  probe.showConnection({connected:true,models:[...models,'new-model']});
+  const cfg=probe.readConfiguration();
+  assert.equal(cfg.mainAgent.model,models[0]);
+  assert.deepEqual(Array.from(cfg.monitors,m=>m.model),models.slice(1,4));
+  const restored=setup(cfg).probe.readConfiguration();
+  assert.equal(JSON.stringify(restored),JSON.stringify(cfg));
+});
+
+test('unavailable saved model stays visible but cannot be used with a connected key', () => {
+  const cfg=setup().probe.readConfiguration();
+  cfg.mainAgent.model='ft:'+ 'x'.repeat(100);
+  const {probe,elements}=setup(cfg);
+  probe.showConnection({connected:true,models:['gpt-4o']});
+  const main=elements.get('main-model');
+  assert.equal(main.value,cfg.mainAgent.model);
+  assert.ok(main.options.find(o=>o.value===main.value).textContent.includes('현재 목록에 없음'));
+  probe.validInputs();
+  assert.ok(main.validationMessage.includes('모델 목록'));
+  main.value='gpt-4o';
+  probe.validInputs();
+  assert.equal(main.validationMessage,'');
+  probe.showConnection({connected:false,models:[]});
+  assert.equal(main.value,'gpt-4o');
+  assert.ok(main.options.some(o=>o.value==='gpt-6-luna'));
 });

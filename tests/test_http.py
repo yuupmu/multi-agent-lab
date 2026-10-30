@@ -66,7 +66,27 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(self.request("/api/runs", {})[0], 400)
         self.assertEqual(self.request("/api/runs", config(), {"Content-Type": "text/plain"})[0], 415)
 
+    def test_allocation_selection_rules_and_scoring_routes(self):
+        from test_allocation import AllocationProvider
+        self.engine.api_client = AllocationProvider()
+        cfg = config(); cfg.update(mode='openai',task_id='allocation')
+        status, rules = self.request('/api/tasks/allocation/rules')
+        self.assertEqual(status,200)
+        self.assertIn('진행자 전용',rules['text'])
+        self.assertEqual(self.request('/resource_allocation_benchmark/evaluator/answer_key.json')[0],404)
+        status, state = self.request('/api/runs', cfg)
+        self.assertEqual(status,201)
+        base = '/api/runs/'+state['id']
+        state = wait_for(self.engine,state['id'],lambda s:len(s['requests'])==1)
+        self.assertEqual(self.request(base+'/requests/'+state['requests'][0]['id']+'/answer', {'answer':{'text':'테스트 정책'}})[0],200)
+        wait_for(self.engine,state['id'],lambda s:s['status']=='completed')
+        self.assertEqual(self.request(base+'/test',{})[0],202)
+        result = wait_for(self.engine,state['id'],lambda s:s['test']['status']!='running',timeout=20)
+        self.assertEqual(result['test']['report']['total'],150)
+        self.assertEqual(result['test']['report']['score'],150)
+
     def test_connection_endpoints_and_rejection_before_key(self):
+        self.assertEqual(self.request('/api/connection/refresh', {})[0], 409)
         cfg = config(); cfg['mode'] = 'openai'
         self.assertEqual(self.request('/api/runs', cfg)[0], 409)
         self.assertEqual(self.request('/api/connection', {'key': 'invalid'})[0], 400)
@@ -76,6 +96,21 @@ class HttpTests(unittest.TestCase):
         self.assertTrue(connection['connected'])
         self.assertNotIn(FAKE_KEY, json.dumps(connection))
         self.assertTrue(self.request('/api/health')[1]['model_connected'])
+        provider = self.engine.api_client
+        provider.models += ['gpt-6-luna', 'gpt-4o']
+        status, refreshed = self.request('/api/connection/refresh', {})
+        self.assertEqual(status, 200)
+        self.assertIn('gpt-4o', refreshed['models'])
+        self.assertIs(self.engine.api_client, provider)
+        self.assertNotIn(FAKE_KEY, json.dumps(refreshed))
+        with patch.object(provider, 'connect', side_effect=ValueError('refresh failed')):
+            self.assertEqual(self.request('/api/connection/refresh', {})[0], 400)
+        self.assertFalse(self.engine.connecting)
+        self.assertTrue(self.request('/api/connection')[1]['connected'])
+        _, state = self.request('/api/runs', config())
+        wait_for(self.engine, state['id'], lambda s: len(s['requests']) == 3)
+        self.assertEqual(self.request('/api/connection/refresh', {})[0], 409)
+        self.engine.stop(state['id'])
         self.assertFalse(self.request('/api/connection/disconnect', {})[1]['connected'])
 
 

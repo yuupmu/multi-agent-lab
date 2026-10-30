@@ -1,0 +1,17 @@
+{
+  "benchmark": "resource-allocation-v1",
+  "version": 1,
+  "status": "experimental_draft",
+  "scope": "single_shared_time_slot",
+  "resources": ["seats", "laptops", "projectors"],
+  "priority": {"min": 0, "max": 3, "higher_first": true, "tie_break": "accepted_event_position", "amend_keeps_order": true},
+  "allocation": {"atomic": true, "skip_unfit": true, "skip_across_priorities": true, "preempt_confirmed": false, "oversized_request": "wait", "waiters_hold_resources": false},
+  "identity": {"one_active_reservation_per_user": true, "cancelled_id_reuse": false, "failed_reserve_consumes_id": false},
+  "amend": {"replace_needs_and_priority": true, "confirmed_growth_if_fits": true, "failed_change_is_atomic": true, "waiting_change_may_confirm": true},
+  "capacity": {"minimum": 0, "decrease_below_usage": "reject", "evict": false},
+  "cancel": {"waiting_allowed": true, "already_cancelled": "not_active"},
+  "replay": {"same_event_id_same_body": "original_code_without_effects", "same_event_id_different_body": "event_id_conflict", "cache_errors": true, "conflict_overwrites_cache": false},
+  "promotion_triggers": ["accepted_reserve", "accepted_cancel", "accepted_amend", "accepted_set_capacity"],
+  "notifications": {"on_confirm": true, "on_cancel": true, "on_queue": false, "on_amend": false, "on_capacity_change": false, "on_replay": false},
+  "validation": {"strict_integer_not_boolean": true, "needs_seats_required": true, "needs_values_positive": true, "omitted_resources_mean_zero": true, "unknown_fields_rejected": true, "payload_before_reservation_lookup": true}
+}

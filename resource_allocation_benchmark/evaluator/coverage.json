@@ -1,0 +1,85 @@
+{
+  "total_cases": 150,
+  "total_events": 1690,
+  "categories": [
+    {
+      "id": "capacity_boundary",
+      "name": "정원 경계와 연속 해제",
+      "count": 10
+    },
+    {
+      "id": "fifo_and_bypass",
+      "name": "동순위 선착순과 큰 그룹 건너뛰기",
+      "count": 10
+    },
+    {
+      "id": "priority_order",
+      "name": "우선순위와 접수 순서 충돌",
+      "count": 10
+    },
+    {
+      "id": "oversized_waiter",
+      "name": "전체 정원보다 큰 요청과 증설",
+      "count": 10
+    },
+    {
+      "id": "atomic_resources",
+      "name": "복수 자원 원자적 확보",
+      "count": 10
+    },
+    {
+      "id": "cancel_waiter",
+      "name": "대기 취소와 반복 취소",
+      "count": 10
+    },
+    {
+      "id": "non_preemption",
+      "name": "확정 예약 비선점과 우선순위 변경",
+      "count": 10
+    },
+    {
+      "id": "amend_confirmed",
+      "name": "확정 예약 변경과 실패 시 원상 유지",
+      "count": 10
+    },
+    {
+      "id": "amend_waiting",
+      "name": "대기 요청 변경과 접수 순서 보존",
+      "count": 10
+    },
+    {
+      "id": "expand_resources",
+      "name": "자원별 증설과 단계적 승격",
+      "count": 10
+    },
+    {
+      "id": "shrink_resources",
+      "name": "축소 거부와 자동 승격의 상호작용",
+      "count": 10
+    },
+    {
+      "id": "duplicate_identity",
+      "name": "중복 사용자와 예약 ID 재사용",
+      "count": 10
+    },
+    {
+      "id": "idempotency",
+      "name": "요청 재전송과 동일 ID 충돌",
+      "count": 10
+    },
+    {
+      "id": "invalid_input",
+      "name": "타입·범위·존재 여부 오류",
+      "count": 10
+    },
+    {
+      "id": "mixed_chain",
+      "name": "취소·변경·증설의 복합 연쇄",
+      "count": 10
+    }
+  ],
+  "event_count_min": 8,
+  "event_count_max": 18,
+  "cases_with_final_waitlist": 60,
+  "cases_with_multiple_final_waiters": 40
+}

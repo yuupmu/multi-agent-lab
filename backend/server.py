@@ -5,6 +5,7 @@ from urllib.parse import urlsplit
 
 from .engine import Conflict, Engine
 from .openai_client import APIError
+from .tasks import TASKS
 
 
 def handler_for(engine):
@@ -42,6 +43,10 @@ def handler_for(engine):
                 if path == "/api/runs/latest":
                     return self.respond(200, engine.latest())
                 parts = path.strip("/").split("/")
+                if len(parts) == 4 and parts[:2] == ['api', 'tasks'] and parts[3] == 'rules' and parts[2] in TASKS:
+                    # Human-facing reference only; never included in an agent envelope.
+                    policy = engine.root / TASKS[parts[2]]['directory'] / 'evaluator/HUMAN_POLICY.md'
+                    return self.respond(200, {'text':policy.read_text()})
                 if len(parts) == 3 and parts[:2] == ["api", "runs"]:
                     return self.respond(200, engine.get(parts[2]))
                 if len(parts) == 4 and parts[:2] == ["api", "runs"] and parts[3] == "artifact":
@@ -79,6 +84,8 @@ def handler_for(engine):
                     return self.respond(200, engine.connect(body.get('key')))
                 if parts == ['api', 'connection', 'disconnect']:
                     return self.respond(200, engine.disconnect())
+                if parts == ['api', 'connection', 'refresh']:
+                    return self.respond(200, engine.refresh_models())
                 if parts == ["api", "runs"]:
                     return self.respond(201, engine.start(body))
                 if len(parts) == 4 and parts[:2] == ["api", "runs"]:

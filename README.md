@@ -8,12 +8,12 @@ Mac에서 `start.command`를 실행하고 http://127.0.0.1:8000 을 엽니다. �
 
 파일로 연 `web/index.html`에서는 입력 설정만 사용할 수 있습니다. API 연결·실행·답변·채점은 서버 주소에서 사용합니다.
 
-1. 상단 **OpenAI API 키**에 입력하고 **연결**을 누릅니다.
-2. 실행 모드를 **OpenAI API**로 두고 메인·감시자별 API 모델 ID와 프롬프트를 입력합니다. 연결된 계정의 모델 목록이 자동 완성 후보로 제공됩니다.
+1. **테스트 상황**에서 예약 취소(100문항) 또는 예약·대기열·자원 배정(150세트)을 선택합니다. API 키를 입력하고 **연결**을 누릅니다.
+2. 실행 모드를 **OpenAI API**로 두고 메인·감시자별 모델을 선택하고 프롬프트를 입력합니다. 연결 후에는 계정에서 조회한 모든 모델 ID가 드롭다운에 표시됩니다. **모델 새로고침**으로 목록을 갱신할 수 있습니다. 연결 전 기본 후보는 Sol·Astra·Terra·Luna·GPT-4o·GPT-4o mini이며 실제 접근 가능 여부는 연결 후 확인합니다.
 3. **실행** → 질문 선택 → 인간 답변 제출 → 코드 수정·검증.
-4. 프로젝트 완료 후 **테스트하기**를 눌러 고정 100문항을 채점합니다.
+4. 프로젝트 완료 후 **테스트하기**를 눌러 해당 실행에 고정된 100문항 또는 150세트를 채점합니다. 과제 선택을 바꾸어도 이미 생성한 실행의 채점기는 바뀌지 않습니다.
 
-키 확인은 모델 목록 조회입니다. 특정 모델의 Responses·구조화 출력 지원, 추론 권한, 잔여 사용 한도까지 보장하지 않으며 실행 오류는 화면에 표시됩니다. 키 연결 자체는 생성 호출을 하지 않습니다. **실행**부터 모델 API 사용량이 발생합니다. 키가 없으면 **모의 실행**으로 기존 흐름을 확인할 수 있습니다. 연결 실패 시 모의 실행으로 자동 전환하지 않습니다.
+키 확인은 모델 목록 조회입니다. 특정 모델의 Responses·구조화 출력 지원, 추론 권한, 잔여 사용 한도까지 보장하지 않으며 실행 오류는 화면에 표시됩니다. 키 연결 자체는 생성 호출을 하지 않습니다. **실행**부터 모델 API 사용량이 발생합니다. 키가 없으면 기존 예약 취소 과제를 **모의 실행**으로 확인할 수 있습니다. 새 자원 배정 과제는 API 모드에서 실행합니다. 연결 실패 시 모의 실행으로 자동 전환하지 않습니다.
 
 ## 키와 프롬프트
 
@@ -26,11 +26,11 @@ Mac에서 `start.command`를 실행하고 http://127.0.0.1:8000 을 엽니다. �
 
 ## 실제 실행과 검증 범위
 
-실제 모드에서는 모델이 계획·소스 코드·질문을 생성합니다. 공개 과제만 전달하고 숨겨진 정책·100문항·정답은 모델 입력에서 제외합니다. 상단 **규칙** 버튼은 진행자가 보는 채점 기준이며 에이전트에 자동 전달하지 않습니다.
+실제 모드에서는 모델이 계획·소스 코드·질문을 생성합니다. 공개 과제만 전달하고 숨겨진 정책·평가 입력·정답은 모델 입력에서 제외합니다. 상단 **규칙** 버튼은 진행자가 보는 채점 기준이며 에이전트에 자동 전달하지 않습니다.
 
 새 인간 답변 없이 자동으로 코드를 6회 작성·수정하면 일시 대기합니다. 인간 답변 반영은 이 횟수에 포함하지 않으며, 새 답변이 있으면 횟수를 초기화합니다. 대기 중에도 답변을 입력할 수 있고 **계속하기**로 기존 코드·질문·답변을 유지하며 재개합니다. 한 번의 응답 제한 시간은 120초입니다. 중단하면 이후 결과를 반영하지 않습니다. 이미 전송된 API 호출의 과금까지 취소하는 기능은 아닙니다.
 
-생성 코드의 문법, `can_cancel(now, booked_at, starts_at)` 함수, 모델이 제안한 최대 10개 자체 검증을 확인합니다. 자체 검증과 최종 100문항은 별개입니다. 인간 결정 반영 여부는 메인 모델의 반영 보고와 감시 검토로 기록하며, 이를 의미적 정확도 보장으로 표시하지 않습니다. 최종 기능 정확도는 사용자가 실행하는 별도 채점에서 확인합니다.
+생성 코드의 문법, 과제별 `can_cancel(now, booked_at, starts_at)` 또는 `simulate(initial_state, events)` 함수, 모델이 제안한 최대 10개 자체 검증을 확인합니다. 자체 검증과 최종 벤치마크는 별개입니다. 자원 배정 자체 검증은 initial_state·events 입력과 기대 객체를 각각 input_json·expected_json 문자열로 전달하며, 정확한 객체 구조까지 비교합니다. 인간 결정 반영 여부는 메인 모델의 반영 보고와 감시 검토로 기록하며, 이를 의미적 정확도 보장으로 표시하지 않습니다. 최종 기능 정확도는 사용자가 실행하는 별도 채점에서 확인합니다.
 
 모델 코드 실행은 macOS `sandbox-exec`로 분리합니다. 시스템 Python 라이브러리·임시 제출 파일만 읽을 수 있고 프로젝트·정답 파일 읽기, 파일 쓰기, 네트워크, 자식 프로세스 생성은 허용하지 않습니다. 환경변수를 비우고 실행 시간·CPU 시간을 제한합니다. 격리 실행에 실패하면 일반 실행으로 우회하지 않습니다. 정답 대조는 신뢰하는 부모 프로세스가 수행합니다.
 
@@ -44,7 +44,7 @@ Mac에서 `start.command`를 실행하고 http://127.0.0.1:8000 을 엽니다. �
 - **실행 기록 / 코드**: 현재 실행 내려받기.
 - 서버 재시작 시 미완료 실행은 중단으로 기록합니다. 키를 다시 연결한 뒤 **계속하기**로 재개할 수 있습니다. 이전 버전의 6회 수정 제한으로 실패한 실행도 대기 상태로 복구합니다. 자동 재개하지 않습니다.
 
-운영 정책은 사전 전달하지 않습니다. 함수 입출력 계약과 실행 형식만 자동 제공하며, 실제 정책은 사용자 프롬프트·해당 실행의 인간 답변에서만 전달됩니다. 시간대·휴무·마감·예외·오류 처리의 정답은 평가 진행자용 `reservation_benchmark/evaluator/HUMAN_POLICY.md`에만 둡니다. 기존 실행 기록은 유지되므로 변경된 실험은 새 실행으로 시작하세요.
+운영 정책은 사전 전달하지 않습니다. 함수 입출력 계약과 실행 형식만 자동 제공하며, 실제 정책은 사용자 프롬프트·해당 실행의 인간 답변에서만 전달됩니다. 시간대·휴무·마감·예외·오류 처리의 정답 정책은 각 과제의 `evaluator/HUMAN_POLICY.md`와 사이트의 진행자용 규칙 화면에서 확인합니다. 해당 내용은 에이전트에 자동 전달하지 않습니다. 기존 실행 기록은 유지되므로 변경된 실험은 새 실행으로 시작하세요.
 
 ## 파일과 API
 
@@ -57,10 +57,11 @@ backend/isolated*.py        생성 코드 격리 검증·채점
 backend/engine.py           상태·기록·모의 실행
 backend/server.py           로컬 HTTP API
 backend/adapters.py         모의 모델
-reservation_benchmark/      과제·고정 100문항·정답·채점기
+reservation_benchmark/      예약 취소 100문항·정답·채점기
+resource_allocation_benchmark/  자원 배정 150세트·정답·제출 양식·채점기
 ```
 
-`GET /api/connection`은 연결 상태와 모델 ID만 반환합니다. `POST /api/connection`에 `{key}`를 보내 연결하고, `POST /api/connection/disconnect`로 해제합니다. `POST /api/runs`의 `mode`는 `openai` 또는 `mock`입니다. 실제 모드 답변은 `POST /api/runs/{id}/requests/{requestId}/answer`에 `{answer:{text},note}` 형태로 전달합니다. 기록 조회·중단·수동 테스트는 기존 `/api/runs/{id}`, `/stop`, `/test` 경로를 사용합니다. 대기·재시작 중단 상태의 재개는 `POST /api/runs/{id}/resume`입니다.
+`GET /api/connection`은 연결 상태와 모델 ID만 반환합니다. `POST /api/connection`에 `{key}`를 보내 연결하고, `POST /api/connection/disconnect`로 해제합니다. `POST /api/connection/refresh`로 같은 키의 모델 목록을 갱신합니다(실행 중에는 불가). `POST /api/runs`의 `task_id`는 `cancellation`(기본값) 또는 `allocation`입니다. 기존 기록에 task_id가 없으면 예약 취소로 해석합니다. `mode`는 `openai` 또는 `mock`입니다. 실제 모드 답변은 `POST /api/runs/{id}/requests/{requestId}/answer`에 `{answer:{text},note}` 형태로 전달합니다. 기록 조회·중단·수동 테스트는 기존 `/api/runs/{id}`, `/stop`, `/test` 경로를 사용합니다. 대기·재시작 중단 상태의 재개는 `POST /api/runs/{id}/resume`입니다.
 
 공식 규격: [Responses 구조화 출력](https://developers.openai.com/api/docs/guides/structured-outputs?api-mode=responses), [모델 목록 API](https://developers.openai.com/api/reference/resources/models/methods/list), [모델 ID](https://developers.openai.com/api/docs/models).
 
@@ -69,6 +70,7 @@ reservation_benchmark/      과제·고정 100문항·정답·채점기
 ```sh
 python3 -B -m unittest discover -s tests -v
 (cd reservation_benchmark && python3 -B -m unittest discover -s tests -v)
+python3 -B resource_allocation_benchmark/evaluator/validate_dataset.py
 node --check web/app.js
 node --test tests/web-runtime.test.cjs
 ```

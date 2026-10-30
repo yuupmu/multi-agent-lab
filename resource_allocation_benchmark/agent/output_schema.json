@@ -1,0 +1,217 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Resource allocation scenario output",
+  "type": "object",
+  "properties": {
+    "event_results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "code": {
+            "type": "string",
+            "enum": [
+              "confirmed",
+              "queued",
+              "cancelled",
+              "amended",
+              "capacity_updated",
+              "invalid_event",
+              "duplicate_reservation",
+              "duplicate_user",
+              "unknown_reservation",
+              "not_active",
+              "insufficient_capacity",
+              "capacity_below_usage",
+              "event_id_conflict"
+            ]
+          },
+          "replayed": {
+            "type": "boolean"
+          },
+          "admitted": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "required": [
+          "event_id",
+          "code",
+          "replayed",
+          "admitted"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "final_state": {
+      "type": "object",
+      "properties": {
+        "capacities": {
+          "type": "object",
+          "properties": {
+            "seats": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "laptops": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "projectors": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "seats",
+            "laptops",
+            "projectors"
+          ],
+          "additionalProperties": false
+        },
+        "available": {
+          "type": "object",
+          "properties": {
+            "seats": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "laptops": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "projectors": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "seats",
+            "laptops",
+            "projectors"
+          ],
+          "additionalProperties": false
+        },
+        "reservations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "reservation_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "user_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "needs": {
+                "type": "object",
+                "properties": {
+                  "seats": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "laptops": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "projectors": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                },
+                "required": [
+                  "seats"
+                ],
+                "additionalProperties": false
+              },
+              "priority": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 3
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "confirmed",
+                  "waiting",
+                  "cancelled"
+                ]
+              },
+              "order": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "required": [
+              "reservation_id",
+              "user_id",
+              "needs",
+              "priority",
+              "status",
+              "order"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "waitlist": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "capacities",
+        "available",
+        "reservations",
+        "waitlist"
+      ],
+      "additionalProperties": false
+    },
+    "notifications": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "confirmed",
+              "cancelled"
+            ]
+          },
+          "reservation_id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "event_id",
+          "type",
+          "reservation_id"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "event_results",
+    "final_state",
+    "notifications"
+  ],
+  "additionalProperties": false
+}

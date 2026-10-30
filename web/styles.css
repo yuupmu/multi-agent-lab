@@ -27,6 +27,8 @@ fieldset label + label { margin-top: 12px; }
 .actions.compact { margin: 0; }
 .rules-calendar { margin: 14px 0 0; font-size: 12px; }
 #grading-rules td:first-child { white-space: nowrap; }
+.task-picker { max-width: 420px; margin-bottom: 18px; }
+#allocation-rules { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: 13px; line-height: 1.7; margin: 0; }
 .section-heading { margin-bottom: 16px; }
 .section-heading h2 { margin: 0; }
 .columns { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
