@@ -16,6 +16,7 @@ from .openai_client import OpenAIClient
 from .live_workflow import LiveWorkflow
 from .isolated import grade_isolated
 from .tasks import TASKS, task_id
+from .model_support import supported_models
 
 
 def now():
@@ -59,6 +60,7 @@ def validate_config(config):
 
 class Engine(LiveWorkflow):
     ACTIVE = {"running", "waiting", "applying"}
+    RESUMABLE = {"paused", "interrupted", "failed"}
 
     def __init__(self, root, data_dir=None, benchmark=None, main_agent=None, monitors=None):
         self.root = Path(root).resolve()
@@ -94,7 +96,7 @@ class Engine(LiveWorkflow):
     def connection(self):
         with self.cv:
             return {'connected': self.api_client is not None, 'connecting': self.connecting,
-                    'models': list(self.api_client.models) if self.api_client else []}
+                    'models': supported_models(self.api_client.models) if self.api_client else []}
 
     def _connection_idle(self):
         if self.closed or self.connecting or any(s['status'] in self.ACTIVE for s in self.runs.values()):
@@ -182,7 +184,7 @@ class Engine(LiveWorkflow):
                 if not self.api_client:
                     raise Conflict('API 키를 먼저 연결하세요.')
                 for agent in [config['mainAgent']] + config['monitors']:
-                    if agent['model'] not in self.api_client.models:
+                    if agent['model'] not in supported_models(self.api_client.models):
                         raise ValueError('사용 가능한 API 모델 ID를 선택하세요: ' + agent['model'])
             run_id = uuid.uuid4().hex
             state = {"id": run_id, "mode": config['mode'], "config": config, "created_at": now(), "revision": 0,
@@ -337,7 +339,7 @@ class Engine(LiveWorkflow):
     def answer(self, run_id, request_id, answer, note=""):
         with self.cv:
             state = self._state(run_id)
-            if state["status"] not in self.ACTIVE and not (state['mode'] == 'openai' and state['status'] in {'paused', 'interrupted'}):
+            if state["status"] not in self.ACTIVE and not (state['mode'] == 'openai' and state['status'] in self.RESUMABLE):
                 raise Conflict("진행 중인 실행이 아닙니다.")
             request = next((r for r in state["requests"] if r["id"] == request_id), None)
             if not request:
@@ -362,15 +364,20 @@ class Engine(LiveWorkflow):
     def resume(self, run_id):
         with self.cv:
             state = self._state(run_id)
-            if state['mode'] != 'openai' or state['status'] not in {'paused', 'interrupted'}:
+            if state['mode'] != 'openai' or state['status'] not in self.RESUMABLE:
                 raise Conflict('이어갈 수 있는 실행이 아닙니다.')
             if self.closed or self.connecting or any(s['status'] in self.ACTIVE or s['test']['status'] == 'running' for s in self.runs.values()):
                 raise Conflict('진행 중인 실행을 먼저 완료하거나 중단하세요.')
             if not self.api_client:
                 raise Conflict('API 키를 먼저 연결하세요.')
             for agent in [state['config']['mainAgent']] + state['config']['monitors']:
-                if agent['model'] not in self.api_client.models:
+                if agent['model'] not in supported_models(self.api_client.models):
                     raise ValueError('기존 실행의 모델에 접근할 수 없습니다: ' + agent['model'])
+            if state['status'] == 'failed':
+                errors = [e['message'] for e in state['events'] if '오류:' in e.get('message', '')]
+                state['last_error'] = errors[-1] if errors else '이전 실행 실패'
+                candidates = [c.get('output', {}).get('code') for c in state['calls'] if c['agent'] == 'main']
+                state['rejected_code'] = next((code for code in reversed(candidates) if isinstance(code, str)), None)
             state['execution_epoch'] = state.get('execution_epoch', 0) + 1
             for call in state['calls']:
                 if call.get('status') == 'running':

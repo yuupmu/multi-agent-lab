@@ -97,10 +97,15 @@ class HttpTests(unittest.TestCase):
         self.assertNotIn(FAKE_KEY, json.dumps(connection))
         self.assertTrue(self.request('/api/health')[1]['model_connected'])
         provider = self.engine.api_client
-        provider.models += ['gpt-6-luna', 'gpt-4o']
+        provider.models += ['gpt-6-luna', 'gpt-4o', 'gpt-4o-mini-tts', 'gpt-4o-2024-05-13']
         status, refreshed = self.request('/api/connection/refresh', {})
         self.assertEqual(status, 200)
         self.assertIn('gpt-4o', refreshed['models'])
+        self.assertNotIn('gpt-4o-mini-tts', refreshed['models'])
+        self.assertNotIn('gpt-4o-2024-05-13', refreshed['models'])
+        unsupported = config(); unsupported['mode'] = 'openai'
+        unsupported['mainAgent']['model'] = 'gpt-4o-mini-tts'
+        self.assertEqual(self.request('/api/runs', unsupported)[0], 400)
         self.assertIs(self.engine.api_client, provider)
         self.assertNotIn(FAKE_KEY, json.dumps(refreshed))
         with patch.object(provider, 'connect', side_effect=ValueError('refresh failed')):

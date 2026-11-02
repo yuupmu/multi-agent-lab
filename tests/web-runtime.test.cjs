@@ -24,7 +24,7 @@ function setup(saved) {
   const context = {document:{createElement(tag){return {tagName:tag.toUpperCase(),value:'',textContent:''};},getElementById(id){assert.ok(elements.has(id), 'missing ID: ' + id); return elements.get(id);}},
     localStorage:{getItem(){return saved ? JSON.stringify(saved) : null;}}, location:{protocol:'file:'}};
   vm.createContext(context);
-  vm.runInContext(script + '\nglobalThis.probe = {readConfiguration,restoreConfiguration,commonMonitorPrompt,showConnection,validInputs,setRuntime(state, connected) {currentRun=state; online=true; apiConnected=connected; selectedRequest=state.requests[0]?.id; controls();}};', context);
+  vm.runInContext(script + '\nglobalThis.probe = {readConfiguration,restoreConfiguration,commonMonitorPrompt,showConnection,validInputs,pendingSelection,executionDisplay,diagnosticText,setRuntime(state, connected) {currentRun=state; online=true; apiConnected=connected; selectedRequest=state.requests[0]?.id; controls();}};', context);
   return {probe:context.probe, elements};
 }
 
@@ -33,11 +33,11 @@ test('default instructions include common judgment prompt for all three monitors
   for (const m of probe.readConfiguration().monitors) assert.ok(m.instructions.includes(probe.commonMonitorPrompt));
 });
 
-test('paused and interrupted runs accept answers even before key reconnection', () => {
+test('paused, interrupted and failed runs accept answers before key reconnection', () => {
   const {probe, elements} = setup();
   const input = {};
   elements.get('answer-fields').querySelectorAll = () => [input];
-  for (const status of ['paused', 'interrupted']) {
+  for (const status of ['paused', 'interrupted', 'failed']) {
     const state = {mode:'openai', status, test:{status:'not_run'}, requests:[{id:'pending',status:'waiting'}]};
     probe.setRuntime(state, false);
     assert.equal(input.disabled, false);
@@ -98,9 +98,9 @@ test('old saved prompts migrate once and edited version 3 prompts stay verbatim'
 });
 
 
-test('all account model IDs are selectable independently, including Luna and GPT-4o', () => {
+test('supported account model IDs are selectable independently, including Luna and GPT-4o', () => {
   const {probe,elements}=setup();
-  const models=['gpt-6-luna','gpt-4o','gpt-4o-mini','gpt-4o-2024-11-20','future-model','ft:'+ 'x'.repeat(100)];
+  const models=['gpt-6-luna','gpt-4o','gpt-4o-mini','gpt-4o-2024-11-20','gpt-5.4','gpt-5.4-mini'];
   probe.showConnection({connected:true,models});
   const ids=['main-model','model-1','model-2','model-3'];
   ids.forEach((id,i)=>{
@@ -108,7 +108,7 @@ test('all account model IDs are selectable independently, including Luna and GPT
     for(const model of models) assert.ok(input.options.some(o=>o.value===model));
     input.value=models[i];
   });
-  probe.showConnection({connected:true,models:[...models,'new-model']});
+  probe.showConnection({connected:true,models:[...models,'gpt-5.5']});
   const cfg=probe.readConfiguration();
   assert.equal(cfg.mainAgent.model,models[0]);
   assert.deepEqual(Array.from(cfg.monitors,m=>m.model),models.slice(1,4));
@@ -123,7 +123,8 @@ test('unavailable saved model stays visible but cannot be used with a connected 
   probe.showConnection({connected:true,models:['gpt-4o']});
   const main=elements.get('main-model');
   assert.equal(main.value,cfg.mainAgent.model);
-  assert.ok(main.options.find(o=>o.value===main.value).textContent.includes('현재 목록에 없음'));
+  assert.ok(main.options.find(o=>o.value===main.value).textContent.includes('지원 목록에 없음'));
+  assert.equal(main.options.find(o=>o.value===main.value).disabled,true);
   probe.validInputs();
   assert.ok(main.validationMessage.includes('모델 목록'));
   main.value='gpt-4o';
@@ -132,4 +133,42 @@ test('unavailable saved model stays visible but cannot be used with a connected 
   probe.showConnection({connected:false,models:[]});
   assert.equal(main.value,'gpt-4o');
   assert.ok(main.options.some(o=>o.value==='gpt-6-luna'));
+});
+
+
+test('new pending questions replace the locked answered selection without stealing an active draft', () => {
+  const {probe}=setup();
+  const requests=[{id:'old',status:'answered'},{id:'new',status:'waiting'},{id:'third',status:'waiting'}];
+  assert.equal(probe.pendingSelection(requests,'old'),'new');
+  assert.equal(probe.pendingSelection(requests,'third'),'third');
+  assert.equal(probe.pendingSelection([requests[0]],'old'),'old');
+});
+
+
+test('execution status distinguishes waiting for a model, paused and disconnected', () => {
+  const {probe}=setup();
+  const run={status:'running',phase:'코드 작성',test:{status:'not_run'},calls:[{agent:'main',status:'running'}]};
+  assert.deepEqual(Array.from(probe.executionDisplay(run,true)),['진행 중','메인 응답 대기']);
+  run.status='paused';run.last_error='보고 누락';
+  const paused=probe.executionDisplay(run,true);
+  assert.equal(paused[0],'일시 정지 · 멈춤');
+  assert.ok(paused[1].includes('자동 진행 안 됨'));
+  assert.ok(paused[1].includes('보고 누락'));
+  assert.equal(probe.executionDisplay(run,false)[0],'연결 끊김');
+  run.status='waiting';assert.equal(probe.executionDisplay(run,true)[0],'답변 대기');
+  run.status='completed';assert.equal(probe.executionDisplay(run,true)[0],'완료');
+  run.test.status='running';assert.equal(probe.executionDisplay(run,true)[0],'채점 중');
+});
+
+
+test('diagnostics show exact limits and failed responses, with a truthful legacy fallback', () => {
+  const {probe}=setup();
+  const state={calls:[{id:'call-1',output:{requests:[{question:'확인'}]}}],diagnostics:[{
+    at:'2026-10-30T03:00:00Z',agent:'monitor-3',model:'gpt-5',call_id:'call-1',code_version:0,
+    action:'observe',stage:'response_validation',exception_type:'ResponseValidationError',
+    message:'질문 8개 초과',details:{field:'requests.length',expected:'<= 6',actual:8},elapsed_ms:1200
+  }]};
+  const text=probe.diagnosticText(state);
+  for(const part of ['감시 3','gpt-5','requests.length','<= 6','질문 8개 초과','확인']) assert.ok(text.includes(part));
+  assert.ok(probe.diagnosticText({last_error:'이전 오류'}).includes('복원할 수 없습니다'));
 });

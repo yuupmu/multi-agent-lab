@@ -59,3 +59,8 @@ summary { cursor: pointer; }
 footer { padding-top: 18px; }
 @media (max-width: 800px) { .monitors, .columns { grid-template-columns: 1fr; gap: 16px; } }
 @media (max-width: 520px) { main { padding: 22px 16px; } header { align-items: flex-start; flex-direction: column; gap: 8px; } .fields, .summary { grid-template-columns: 1fr; } .actions .muted { flex-basis: 100%; } }
+
+#execution-status { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+#execution-hint { overflow-wrap: anywhere; }
+
+#error-detail-text { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 480px; overflow: auto; font-size: 12px; line-height: 1.6; }

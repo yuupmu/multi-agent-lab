@@ -14,8 +14,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def config():
     return {"project": {"name": "예약 실험"},
-            "mainAgent": {"model": "mock-main", "prompt": "  직접 쓴 메인 지침\n수정 금지  "},
-            "monitors": [{"id": i, "model": "mock-monitor", "concept": "관점 %s" % i,
+            "mainAgent": {"model": "gpt-4o", "prompt": "  직접 쓴 메인 지침\n수정 금지  "},
+            "monitors": [{"id": i, "model": "gpt-4o-mini", "concept": "관점 %s" % i,
                           "instructions": "  지침 %s\n%s  " % (i, COMMON_MONITOR_PROMPT)} for i in (1, 2, 3)]}
 
 

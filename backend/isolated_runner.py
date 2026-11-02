@@ -3,6 +3,7 @@ import contextlib
 import importlib.util
 import json
 import resource
+import re
 import sys
 
 resource.setrlimit(resource.RLIMIT_CPU, (5, 5))
@@ -20,9 +21,16 @@ cases, task = payload['cases'], payload['task_id']
 with contextlib.redirect_stdout(Sink()), contextlib.redirect_stderr(Sink()):
     spec = importlib.util.spec_from_file_location('submission', sys.argv[1])
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
     rows = []
-    for case in cases:
+    try:
+        spec.loader.exec_module(module)
+        load_error = None
+    except Exception as exc:
+        load_error = '코드 불러오기 실패: ' + type(exc).__name__
+        if isinstance(exc, ModuleNotFoundError) and re.fullmatch(r'[A-Za-z0-9_.]{1,80}', exc.name or ''):
+            load_error += ' (' + exc.name + '). 외부 패키지 대신 표준 라이브러리를 사용하세요.'
+        rows = [{'actual': None, 'error': load_error} for _ in cases]
+    for case in ([] if load_error else cases):
         try:
             if task == 'allocation':
                 result = module.simulate(case['initial_state'], case['events'])

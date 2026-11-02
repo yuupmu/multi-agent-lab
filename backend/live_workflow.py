@@ -1,13 +1,14 @@
 import ast
 import copy
 import hashlib
-import re
 import uuid
+from datetime import datetime
 
 from .adapters import agent_input
 from .isolated import check_code
 from .live_schemas import PLAN, schemas_for, main_rules, monitor_rules
 from .tasks import TASKS, task_id
+from .diagnostics import timestamp, safe_log, validate_monitor, error_record, ResponseValidationError
 
 
 class RunStopped(Exception):
@@ -16,6 +17,60 @@ class RunStopped(Exception):
 
 class LiveWorkflow:
     MAX_AUTONOMOUS_STEPS = 6
+    MAX_REPORT_RETRIES = 2
+
+    def _public_verification(self, code, checks, selected_task):
+        # Candidate mistakes become feedback for revision, not fatal workflow errors.
+        try:
+            definition = TASKS[selected_task]
+            tree = ast.parse(code)
+            if not any(isinstance(n, ast.FunctionDef) and n.name == definition['function'] and len(n.args.args) == len(definition['arguments']) for n in tree.body):
+                raise ValueError('%s(%s) 함수가 필요합니다.' % (definition['function'], ', '.join(definition['arguments'])))
+            return check_code(code, checks, selected_task)
+        except (SyntaxError, ValueError, RuntimeError) as exc:
+            message = ('Python 문법 오류 (줄 %s)' % exc.lineno) if isinstance(exc, SyntaxError) else str(exc)[:1000]
+            return {'passed': False, 'correct': 0, 'total': len(checks) if isinstance(checks, list) else 0,
+                    'results': [], 'error': message}
+
+    def _record_call_error(self, state, call, exc, ignored=False):
+        if call and call.get('error'):
+            return
+        if call:
+            if getattr(exc, 'response', None) is not None:
+                call['raw_response'] = safe_log(exc.response)
+                call['response_id'] = exc.response.get('id')
+                call['stage'] = 'response_decoding'
+            self._finish_call(call)
+        record = error_record(exc, call, state['phase'], state['code_version'], state.get('execution_epoch', 0))
+        record['ignored'] = ignored
+        if call:
+            record['execution_epoch'] = call.get('execution_epoch', record['execution_epoch'])
+            record['code_version'] = call.get('input', {}).get('project_state', {}).get('code_version', record['code_version'])
+        state.setdefault('diagnostics', []).append(record)
+        if call:
+            call.update(status='failed', error=record)
+
+    def _finish_call(self, call):
+        call['finished_at'] = timestamp()
+        if call.get('started_at'):
+            call['elapsed_ms'] = round((datetime.fromisoformat(call['finished_at']) - datetime.fromisoformat(call['started_at'])).total_seconds() * 1000)
+
+    def _capture_response(self, state, call, result, metadata, epoch):
+        # Persist before validation, including responses arriving after a pause.
+        call.update(output=safe_log(result), **safe_log(metadata))
+        call['response_received_at'] = timestamp()
+        call['stage'] = 'response_validation'
+        self._finish_call(call)
+        if not self._live_active(state, epoch):
+            call['status'] = 'discarded'
+        self._save(state)
+
+    def _pause_live_error(self, state, message):
+        message = safe_log(message)
+        state.update(status='paused', phase='오류 · 답변 입력/계속하기 대기',
+                     pause_reason='execution_error', last_error=message)
+        self._event(state, message)
+        self._save(state)
 
     def _live_active(self, state, epoch):
         return state['status'] in self.ACTIVE and state.get('execution_epoch', 0) == epoch
@@ -28,8 +83,44 @@ class LiveWorkflow:
             public_task += '\n' + (benchmark / 'agent/OUTPUT_FORMAT.md').read_text()
         context.update(task=public_task,
                        assumptions=state.get('assumptions', []), requests=state['requests'],
-                       monitor_feedback=state['monitors'], verification=state['verification'])
+                       monitor_feedback=state['monitors'], verification=state['verification'],
+                       last_error=state.get('last_error'), rejected_code=state.get('rejected_code'),
+                       required_decision_ids=[d['request_id'] for d in state['decisions']],
+                       response_feedback=state.get('response_feedback'))
         return context
+
+    def _live_implement(self, run_id, selected_task, epoch):
+        for attempt in range(self.MAX_REPORT_RETRIES + 1):
+            result, envelope = self._live_call(run_id, 'implement', schemas_for(selected_task)[0], epoch)
+            expected = {d['request_id'] for d in envelope['project_state']['decisions']}
+            reported = result.get('applied_decision_ids')
+            context_ids = result.get('context_decision_ids', [])
+            valid = all(isinstance(ids, list) and all(isinstance(x, str) for x in ids) for ids in [reported, context_ids])
+            actual = set(reported) | set(context_ids) if valid else set()
+            disjoint = valid and not (set(reported) & set(context_ids))
+            with self.cv:
+                state = self._state(run_id)
+                if not self._live_active(state, epoch):
+                    raise RunStopped()
+                if disjoint and actual == expected:
+                    state.pop('response_feedback', None)
+                    state.pop('rejected_code', None)
+                    if attempt:
+                        self._event(state, '답변 반영 보고 재요청 완료. 코드 검증을 진행합니다.')
+                    self._save(state)
+                    return result, envelope
+                state['response_feedback'] = {
+                    'error': '답변 처리 보고가 누락되거나 중복됐습니다. 코드 요구사항은 실제 반영 후 applied_decision_ids에, 코드 변경이 불필요한 맥락 답변은 context_decision_ids에 넣으세요. required_decision_ids의 각 ID를 정확히 한 목록에 포함하고 전체 소스를 다시 반환하세요. ID만 임의로 추가하지 마세요.',
+                    'required_decision_ids': sorted(expected),
+                    'missing_ids': sorted(expected - actual), 'unknown_ids': sorted(actual - expected),
+                }
+                state['rejected_code'] = result.get('code')
+                self._event(state, '답변 반영 보고 불일치 · 누락 %s건, 알 수 없는 ID %s건 · %s' %
+                            (len(expected - actual), len(actual - expected),
+                             '자동 재요청 %s/%s' % (attempt + 1, self.MAX_REPORT_RETRIES) if attempt < self.MAX_REPORT_RETRIES else '재요청 한도 도달'))
+                self._save(state)
+            if attempt == self.MAX_REPORT_RETRIES:
+                raise ResponseValidationError('decision_ids', sorted(expected), {'applied':reported,'context':context_ids}, '답변 반영 보고가 자동 재요청 2회 후에도 일치하지 않습니다. 답변은 보존됐으며, 계속하기로 재시도할 수 있습니다.')
 
     def _live_call(self, run_id, action, schema, epoch):
         with self.cv:
@@ -37,15 +128,23 @@ class LiveWorkflow:
             if not self._live_active(state, epoch):
                 raise RunStopped()
             envelope = agent_input('main', state['config']['mainAgent'], self._live_context(state), action)
-            call = {'agent': 'main', 'input': envelope, 'status': 'running'}
+            call = {'id':uuid.uuid4().hex, 'agent': 'main', 'input': envelope, 'status': 'running',
+                    'started_at':timestamp(), 'stage':'api_request', 'execution_epoch':epoch}
             state['calls'].append(call)
             client = self.api_client
             self._save(state)
-        result, metadata = client.invoke(envelope, main_rules(task_id(state)), schema)
+        try:
+            result, metadata = client.invoke(envelope, main_rules(task_id(state)), schema)
+        except Exception as exc:
+            with self.cv:
+                self._record_call_error(state, call, exc, ignored=not self._live_active(state, epoch))
+                self._save(state)
+            raise
         with self.cv:
+            self._capture_response(state, call, result, metadata, epoch)
             if not self._live_active(state, epoch):
                 raise RunStopped()
-            call.update(status='completed', output=result, **metadata)
+            call.update(status='completed')
             self._save(state)
         return result, envelope
 
@@ -54,7 +153,8 @@ class LiveWorkflow:
         snapshot = copy.deepcopy(self._live_context(state))
         for config in state['config']['monitors']:
             envelope = agent_input('monitor', config, snapshot, 'observe')
-            call = {'agent': 'monitor-%s' % config['id'], 'input': envelope, 'status': 'running'}
+            call = {'id':uuid.uuid4().hex, 'agent': 'monitor-%s' % config['id'], 'input': envelope, 'status': 'running',
+                    'started_at':timestamp(), 'stage':'api_request', 'execution_epoch':state.get('execution_epoch', 0)}
             state['calls'].append(call)
             state['monitors'][config['id'] - 1]['status'] = 'observing'
             self.pool.submit(self._live_monitor, state['id'], config['id'], envelope, call, self.api_client, state.get('execution_epoch', 0))
@@ -66,31 +166,22 @@ class LiveWorkflow:
                     return
                 selected_task = task_id(self._state(run_id))
             result, metadata = client.invoke(envelope, monitor_rules(selected_task), schemas_for(selected_task)[1])
+            with self.cv:
+                state = self._state(run_id)
+                self._capture_response(state, call, result, metadata, epoch)
+                if not self._live_active(state, epoch):
+                    return
+            validate_monitor(result)
             decision = result.get('decision')
-            if decision not in ('continue', 'verify', 'human') or not isinstance(result.get('reason'), str):
-                raise ValueError('감시 응답 형식 오류')
             items = result.get('requests')
             checks = result.get('checks')
-            if not isinstance(items, list) or len(items) > 6 or not isinstance(checks, list):
-                raise ValueError('감시 요청 형식 오류')
-            if (decision == 'human') != bool(items) or (decision == 'verify' and not checks):
-                raise ValueError('감시 판단에 필요한 질문 또는 검증 항목이 없습니다.')
-            for item in items:
-                if not isinstance(item, dict) or not re.fullmatch('[a-z0-9_]{1,64}', item.get('key', '')):
-                    raise ValueError('질문 key 형식 오류')
-                if any(not isinstance(item.get(k), str) or not 1 <= len(item[k]) <= 2000 for k in ('question', 'reason')):
-                    raise ValueError('질문·근거 형식 오류')
-                if not isinstance(item.get('affected_tasks'), list) or not item['affected_tasks'] or not set(item['affected_tasks']) <= {'input', 'policy', 'docs'}:
-                    raise ValueError('영향받는 작업 형식 오류')
-                if item.get('priority') not in ('normal', 'high'):
-                    raise ValueError('우선순위 형식 오류')
             code = envelope['project_state']['code']
-            verification = check_code(code, checks, selected_task) if checks and code else None
+            verification = self._public_verification(code, checks, selected_task) if checks and code else None
             with self.cv:
                 state = self._state(run_id)
                 if not self._live_active(state, epoch):
                     return
-                call.update(status='completed', output=result, **metadata)
+                call.update(status='completed')
                 monitor = state['monitors'][monitor_id - 1]
                 version = envelope['project_state']['code_version']
                 if monitor['version'] is not None and version < monitor['version']:
@@ -113,10 +204,11 @@ class LiveWorkflow:
         except Exception as exc:
             with self.cv:
                 state = self._state(run_id)
+                self._record_call_error(state, call, exc, ignored=not self._live_active(state, epoch))
                 if self._live_active(state, epoch):
-                    call['status'] = 'failed'
-                    state['status'] = 'failed'
-                    self._event(state, '감시 오류: ' + str(exc))
+                    state['monitors'][monitor_id - 1].update(status='error', reason=safe_log(str(exc)))
+                    self._pause_live_error(state, '감시 %s 오류: %s' % (monitor_id, str(exc)))
+                else:
                     self._save(state)
 
     def _live_task_status(self, state):
@@ -161,19 +253,14 @@ class LiveWorkflow:
                     state['autonomous_steps'] = autonomous_steps
                     state.update(status='running', phase='코드 작성·수정')
                     self._save(state)
-                result, envelope = self._live_call(run_id, 'implement', schemas_for(selected_task)[0], epoch)
+                result, envelope = self._live_implement(run_id, selected_task, epoch)
                 code = result.get('code')
                 if not isinstance(code, str) or len(code) > 100000:
                     raise ValueError('생성 코드 크기·형식 오류')
-                tree = ast.parse(code)
-                if not any(isinstance(n, ast.FunctionDef) and n.name == definition['function'] and len(n.args.args) == len(definition['arguments']) for n in tree.body):
-                    raise ValueError('%s(%s) 함수가 필요합니다.' % (definition['function'], ', '.join(definition['arguments'])))
                 if type(result.get('complete')) is not bool:
                     raise ValueError('완료 판단 형식 오류')
                 expected = {d['request_id'] for d in envelope['project_state']['decisions']}
-                if not isinstance(result.get('applied_decision_ids'), list) or set(result['applied_decision_ids']) != expected:
-                    raise ValueError('메인 에이전트가 모든 인간 결정의 반영을 보고하지 않았습니다.')
-                verification = check_code(code, result.get('checks'), selected_task)
+                verification = self._public_verification(code, result.get('checks'), selected_task)
                 with self.cv:
                     if not self._live_active(state, epoch):
                         return
@@ -186,7 +273,10 @@ class LiveWorkflow:
                                              'note': '문법·모델 제안 자체 검증. 인간 결정 반영은 모델 보고이며 최종 정확도는 별도 채점.'}
                     for request in state['requests']:
                         if request['id'] in expected and request['status'] == 'answered':
-                            request.update(status='applied', applied_version=version)
+                            if request['id'] in result.get('context_decision_ids', []):
+                                request.update(status='acknowledged', acknowledged_version=version)
+                            else:
+                                request.update(status='applied', applied_version=version)
                     self._event(state, '코드 v%s 작성 · 자체 검증 %s/%s' % (version, verification['correct'], verification['total']), 'main')
                     self._live_task_status(state)
                     self._live_observe(state)
@@ -221,6 +311,6 @@ class LiveWorkflow:
             with self.cv:
                 state = self._state(run_id)
                 if self._live_active(state, epoch):
-                    state.update(status='failed', phase='실행 실패')
-                    self._event(state, '작업 오류: ' + str(exc))
-                    self._save(state)
+                    call = next((c for c in reversed(state['calls']) if c['agent'] == 'main' and c.get('execution_epoch', 0) == epoch), None)
+                    self._record_call_error(state, call, exc)
+                    self._pause_live_error(state, '작업 오류: ' + str(exc))

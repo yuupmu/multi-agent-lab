@@ -20,7 +20,7 @@ FAKE_KEY = 'sk-test_only_not_a_real_key_12345'
 
 class FakeProvider:
     def __init__(self, key=None):
-        self.models = ['mock-main', 'mock-monitor']
+        self.models = ['gpt-4o', 'gpt-4o-mini']
         self._key = key
         self.envelopes = []
     def connect(self):
@@ -52,11 +52,14 @@ class FakeProvider:
 
 
 class TransportTests(unittest.TestCase):
-    def test_model_list_includes_legacy_future_and_finetuned_ids(self):
+    def test_model_list_only_includes_supported_non_shutdown_models(self):
         client = OpenAIClient(FAKE_KEY)
-        models = ['gpt-6-luna', 'gpt-4o', 'gpt-4o-mini', 'future-model', 'ft:' + 'x' * 100]
+        models = ['gpt-6-luna', 'gpt-4o', 'gpt-4o-mini', 'gpt-4o-2024-11-20', 'gpt-5.4']
+        rejected = ['future-model', 'ft:' + 'x' * 100, 'gpt-4o-2024-05-13',
+                    'gpt-4o-search-preview', 'gpt-4o-mini-tts', 'gpt-3.5-turbo',
+                    'gpt-4.1-nano', 'o1', 'o4-mini', 'gpt-5.2-pro', 'text-embedding-3-small']
         with patch.object(client, '_request', return_value={'data':
-                [{'id': m} for m in models + models] + [None, {}, {'id': None}]}):
+                [{'id': m} for m in models + models + rejected] + [None, {}, {'id': None}]}):
             self.assertEqual(client.connect(), sorted(models))
 
     def test_responses_payload_preserves_prompt_and_handles_output(self):

@@ -19,7 +19,8 @@ let modelsConnected = false;
 function modelOption(value, unavailable = false) {
   const option = document.createElement('option');
   option.value = value;
-  option.textContent = (modelNames[value] ? modelNames[value] + ' · ' : '') + value + (unavailable ? ' · 현재 목록에 없음' : '');
+  option.disabled = unavailable;
+  option.textContent = (modelNames[value] ? modelNames[value] + ' · ' : '') + value + (unavailable ? ' · 지원 목록에 없음' : '');
   return option;
 }
 function fillModelOptions() {
@@ -27,7 +28,7 @@ function fillModelOptions() {
   for (const id of modelFields) {
     const input = $(id), selected = input.value;
     input.replaceChildren();
-    if (selected && !choices.includes(selected)) input.append(modelOption(selected, modelsConnected));
+    if (selected && !choices.includes(selected)) input.append(modelOption(selected, true));
     for (const model of choices) input.append(modelOption(model));
     if (selected) input.value = selected;
   }
@@ -175,7 +176,7 @@ let operationVersion = 0;
 let apiConnected = false;
 let modelList = '';
 const activeStates = ['running', 'waiting', 'applying'];
-const statusLabels = {waiting:'답변 대기', answered:'답변받음', applying:'반영 중', applied:'정책 반영 확인',
+const statusLabels = {acknowledged:'맥락 확인', waiting:'답변 대기', answered:'답변받음', applying:'반영 중', applied:'정책 반영 확인',
   completed:'완료', paused:'계속하기 대기', stopped:'중단', interrupted:'중단됨', failed:'실패', running:'진행 중', not_run:'채점 전'};
 const decisionLabels = {human:'인간 판단 필요', continue:'계속 진행', verify:'추가 검증'};
 async function api(path, body) {
@@ -186,10 +187,29 @@ async function api(path, body) {
   if (!response.ok) throw new Error(data.error || '요청 실패');
   return data;
 }
+function executionDisplay(state, connected, keyConnected = false) {
+  if (!connected) return ['연결 끊김', '서버 연결이 없어 실행 상태를 확인할 수 없습니다.'];
+  if (!state) return ['실행 전', ''];
+  if (state.test?.status === 'running') return ['채점 중', '테스트 결과 대기'];
+  const labels = {running:'진행 중', applying:'진행 중', waiting:'답변 대기', paused:'일시 정지 · 멈춤',
+    interrupted:'중단됨', stopped:'중단됨', failed:'오류 · 멈춤', completed:'완료'};
+  if (['paused','interrupted','failed'].includes(state.status)) {
+    return [labels[state.status], '자동 진행 안 됨 · ' + (keyConnected ? '계속하기 필요' : 'API 키 연결 후 계속하기') + (state.last_error ? ' — ' + state.last_error : '')];
+  }
+  if (state.status === 'stopped') return ['중단됨', '사용자가 중단한 실행'];
+  if (state.status === 'completed') return ['완료', '테스트하기 가능'];
+  const calls = (state.calls || []).filter(c=>c.status === 'running');
+  const pending = calls.map(c=>c.agent === 'main' ? '메인' : c.agent.replace('monitor-', '감시 '));
+  const detail = pending.length ? [...new Set(pending)].join(', ') + ' 응답 대기' : (state.phase || '작업 처리 중');
+  return [labels[state.status] || state.status, state.status === 'waiting' ? '인간 답변 필요 · ' + detail : detail];
+}
 function controls() {
+  const [status, hint] = executionDisplay(currentRun, online, apiConnected);
+  $('execution-status').textContent = status;
+  $('execution-hint').textContent = hint;
   const running = currentRun && activeStates.includes(currentRun.status);
   const testing = currentRun && currentRun.test.status === 'running';
-  const resumable = currentRun?.mode === 'openai' && ['paused', 'interrupted'].includes(currentRun.status);
+  const resumable = currentRun?.mode === 'openai' && ['paused', 'interrupted', 'failed'].includes(currentRun.status);
   $('resume-run').hidden = !resumable;
   $('resume-run').disabled = !online || busy || !resumable || !apiConnected;
   for (const id of fields) $(id).disabled = !!running;
@@ -207,6 +227,11 @@ function controls() {
   $('submit-answer').disabled = !canAnswer;
   $('human-answer').disabled = !canAnswer;
   for (const input of $('answer-fields').querySelectorAll('input,select,textarea')) input.disabled = !canAnswer;
+}
+function pendingSelection(requests, selected) {
+  const current = requests.find(r => r.id === selected);
+  if (current?.status === 'waiting') return selected;
+  return requests.find(r => r.status === 'waiting')?.id || current?.id || null;
 }
 function answerForm() {
   const request = currentRun?.requests.find(r => r.id === selectedRequest);
@@ -247,6 +272,24 @@ function answerForm() {
     formRequest = request.id;
   }
 }
+function diagnosticText(state) {
+  const records = state.diagnostics || [];
+  if (!records.length) return state.last_error ? state.last_error + '\n이전 버전 기록: 실패 응답 원문과 상세 조건이 저장되지 않아 복원할 수 없습니다.' : '';
+  return records.slice(-10).reverse().map(error => {
+    const call = (state.calls || []).find(c => c.id === error.call_id);
+    const agent = error.agent === 'main' ? '메인' : error.agent.replace('monitor-', '감시 ');
+    const lines = [new Date(error.at).toLocaleString('ko-KR', {timeZone:'Asia/Seoul',hour12:false}),
+      agent + ' · ' + (error.model || '모델 정보 없음') + ' · 코드 v' + error.code_version,
+      '작업: ' + error.action + ' / 단계: ' + error.stage + ' / 경과: ' + (error.elapsed_ms ?? '?') + 'ms',
+      error.exception_type + ': ' + error.message];
+    if (error.ignored) lines.push('이전 호출의 늦은 오류: 현재 실행에는 반영하지 않음');
+    if (Object.keys(error.details || {}).length) lines.push('실패 조건:\n' + JSON.stringify(error.details,null,2));
+    if (error.response_id) lines.push('응답 ID: ' + error.response_id);
+    lines.push('모델 응답:\n' + (call && 'output' in call ? JSON.stringify(call.output,null,2) : call?.raw_response ? JSON.stringify(call.raw_response,null,2) : '저장된 응답 없음 (요청 실패 등)'));
+    if (error.trace?.length) lines.push('발생 위치:\n' + error.trace.map(f=>f.file+':'+f.line+' '+f.function).join('\n'));
+    return lines.join('\n');
+  }).join('\n\n────────\n\n');
+}
 function render(state) {
   currentRun = state;
   if (!state) { controls(); return; }
@@ -254,6 +297,9 @@ function render(state) {
   lastRevision = state.id + ':' + state.revision;
   const runTask = taskInfo[state.config.task_id || 'cancellation'];
   $('run-task').textContent = runTask.name + ' · ' + runTask.total + (runTask.total === 150 ? '세트' : '문항');
+  const detail = diagnosticText(state);
+  $('error-details').hidden = !detail;
+  $('error-detail-text').textContent = detail;
   $('run-phase').textContent = state.phase + (['failed','interrupted','stopped'].includes(state.status) ? ' · ' + statusLabels[state.status] : '');
   $('active-tasks').textContent = state.tasks.filter(t => ['running','pending'].includes(t.status)).map(t => t.name).join(', ') || '없음';
   $('blocked-tasks').textContent = state.tasks.filter(t => t.status === 'blocked').map(t => t.name).join(', ') || '없음';
@@ -287,12 +333,12 @@ function render(state) {
   if (!state.requests.length) {
     const row = document.createElement('tr'), td = document.createElement('td'); td.colSpan=6; td.textContent='없음'; row.append(td); $('request-rows').append(row);
   }
-  if (!selectedRequest || !state.requests.some(r => r.id === selectedRequest)) selectedRequest = state.requests.find(r => r.status === 'waiting')?.id || null;
+  selectedRequest = pendingSelection(state.requests, selectedRequest);
   answerForm();
   $('decision-record').textContent = state.decisions.length + '건';
   $('applied-version').textContent = state.requests.filter(r => r.applied_version).map(r => r.key + ': v' + r.applied_version).join(', ') || '없음';
   $('verification-result').textContent = state.verification ? (state.verification.type === 'syntax_and_public_checks' ?
-    '문법 확인 · 자체 검증 ' + state.verification.correct + '/' + state.verification.total : '정책 값·문법 확인') + ' (v' + state.verification.code_version + ')' : '없음';
+    (state.verification.error || '자체 검증') + ' ' + state.verification.correct + '/' + state.verification.total : '정책 값·문법 확인') + ' (v' + state.verification.code_version + ')' : '없음';
   $('test-status').textContent = state.test.error || statusLabels[state.test.status] || state.test.status;
   $('score-value').textContent = state.test.report ? state.test.report.score + ' / ' + state.test.report.total : '— / ' + runTask.total;
   if (state.test.report && runTask.total === 150) $('score-value').textContent += ' (' + state.test.report.accuracy_percent + '%)';
@@ -354,7 +400,7 @@ $('download-code').addEventListener('click', () => { if(currentRun?.artifact) do
 function showConnection(connection) {
   apiConnected = connection.connected;
   const models = [...new Set(connection.models)].sort();
-  $('api-status').textContent = apiConnected ? '연결됨 · 모델 ' + models.length + '개' : '미연결';
+  $('api-status').textContent = apiConnected ? '연결됨 · 지원 모델 ' + models.length + '개' : '미연결';
   const signature = JSON.stringify([apiConnected, models]);
   if (signature !== modelList) {
     modelList = signature;

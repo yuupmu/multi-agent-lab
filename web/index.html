@@ -99,6 +99,9 @@
       <h2 id="project-title">프로젝트 진행</h2>
       <div class="actions compact"><button id="resume-run" type="button" hidden disabled>계속하기</button><button id="start-run" type="button" disabled>실행</button><button id="stop-run" type="button" disabled>중단</button></div>
     </div>
+    <p id="execution-status" role="status" aria-live="polite">실행 전</p>
+    <p id="execution-hint" class="muted"></p>
+    <details id="error-details" hidden><summary>오류 상세</summary><pre id="error-detail-text"></pre></details>
     <dl class="summary">
       <div><dt>실행 과제</dt><dd id="run-task">—</dd></div>
       <div><dt>현재 단계</dt><dd id="run-phase">실행 전</dd></div>
